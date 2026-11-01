@@ -1,0 +1,22 @@
+# Node
+node_modules/
+dist/
+*.log
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/Cargo.lock
+
+# OS
+.DS_Store
+*.swp
+*~
+
+# Backups
+*.bak.*
+*.backup.*
+*.pre-clean.*
+
+# Env
+.env
+.env.local

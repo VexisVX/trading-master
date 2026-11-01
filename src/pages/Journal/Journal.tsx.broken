@@ -1,0 +1,312 @@
+import { useCallback, useEffect, useState } from "react";
+import { TradeForm } from "./TradeForm";
+import { TradeList } from "./TradeList";
+import {
+  addExit, listTrades, Trade, updateTrade, deleteTrade, exportTradesCsv,
+  TradeOutcome, SizeType,
+} from "../../lib/tradesApi";
+import { listStrategies, Strategy } from "../../lib/strategiesApi";
+import { getActiveAccountId } from "../../lib/accountsApi";
+import { save, open } from "@tauri-apps/plugin-dialog";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { SkeletonRows } from "../../components/ui/Skeleton";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
+import { HelpTip } from "../../components/ui/HelpTip";
+import "./Journal.css";
+
+export function Journal() {
+  const [accountId, setAccountId] = useState<number | null>(null);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [showForm, setShowForm] = useState(true);
+  const [exitFor, setExitFor] = useState<Trade | null>(null);
+  const [editFor, setEditFor] = useState<Trade | null>(null);
+  const [screenshotFor, setScreenshotFor] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    title: string; body: string; onConfirm: () => void;
+  } | null>(null);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await listTrades(200, 0);
+      setTrades(list);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const id = await getActiveAccountId();
+        setAccountId(id);
+      } catch (e) { setError(String(e)); }
+      try {
+        const list = await listStrategies();
+        setStrategies(list);
+      } catch { /* non-fatal */ }
+      await refresh();
+    })();
+  }, [refresh]);
+
+  function onDeleteTrade(t: Trade) {
+    setConfirmState({
+      title: `Delete trade #${t.id}?`,
+      body: `This will permanently remove ${t.symbol} and all its legs, tags, and attachments. This cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try { await deleteTrade(t.id); refresh(); }
+        catch (e) { setError(String(e)); }
+      },
+    });
+  }
+
+  async function onExportCsv() {
+    try {
+      const dest = await save({
+        title: "Export trades to CSV",
+        defaultPath: `trades-${new Date().toISOString().slice(0, 10)}.csv`,
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+      if (!dest) return;
+      const bytes = await exportTradesCsv(dest);
+      alert(`Exported ${bytes} bytes to ${dest}`);
+    } catch (e) { setError(String(e)); }
+  }
+
+  return (
+    <div className="journal">
+      <div className="journal__head">
+        <h2>Trade Journal</h2>
+        <div className="journal__actions">
+          <button className="btn btn--ghost" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? "Hide form" : "New trade"}
+          </button>
+          <button className="btn btn--ghost" onClick={onExportCsv}>Export CSV</button>
+          <button className="btn btn--ghost" onClick={refresh}>Refresh</button>
+        </div>
+      </div>
+
+      {showForm && accountId !== null && (
+        <div className="card pop-in">
+          <TradeForm
+            accountId={accountId}
+            onCreated={() => { refresh(); }}
+            onCancel={() => setShowForm(false)}
+          />
+        </div>
+      )}
+
+      {loading && <SkeletonRows rows={6} />}
+      {error && <div className="card card--error">{error}</div>}
+
+      {!loading && !error && (
+        <div className="card">
+          <TradeList
+            trades={trades}
+            strategies={strategies}
+            onAddExit={setExitFor}
+            onEdit={setEditFor}
+            onDelete={onDeleteTrade}
+            onViewScreenshot={setScreenshotFor}
+          />
+        </div>
+      )}
+
+      {confirmState && (
+        <ConfirmDialog
+          title={confirmState.title}
+          body={confirmState.body}
+          confirmLabel="Delete"
+          cancelLabel="Keep"
+          tone="danger"
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState(null)}
+        />
+      )}
+
+      {editFor && (
+        <EditTradeDialog
+          trade={editFor}
+          strategies={strategies}
+          onClose={() => setEditFor(null)}
+          onDone={() => { setEditFor(null); refresh(); }}
+          setError={setError}
+        />
+      )}
+
+      {exitFor && (
+        <ExitDialog
+          trade={exitFor}
+          onClose={() => setExitFor(null)}
+          onDone={() => { setExitFor(null); refresh(); }}
+        />
+      )}
+
+      {screenshotFor && (
+        <div className="modal-backdrop" onClick={() => setScreenshotFor(null)}>
+          <div className="modal modal--screenshot" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="screenshot-close"
+              onClick={() => setScreenshotFor(null)}
+              title="Close"
+            >
+              ×
+            </button>
+            <ScreenshotImage path={screenshotFor} />
+            <p className="screenshot-path mono">{screenshotFor}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScreenshotImage({ path }: { path: string }) {
+  const url = /^(https?:|data:|asset:)/.test(path) ? path : convertFileSrc(path);
+  return (
+    <img
+      className="screenshot-img"
+      src={url}
+      alt="Trade screenshot"
+      onError={(e) => {
+        (e.target as HTMLImageElement).alt = "Could not load image";
+      }}
+    />
+  );
+}
+
+// ============================================================
+// ExitDialog — with Outcome picker and Manual P&L
+// ============================================================
+interface ExitDialogProps {
+  trade: Trade;
+  onClose: () => void;
+  onDone: () => void;
+}
+
+function ExitDialog({ trade, onClose, onDone 
+function EditTradeDialog({ trade, strategies, onClose, onDone, setError }: EditDialogProps) {
+  const [symbol, setSymbol] = useState(trade.symbol);
+  const [entry, setEntry] = useState(trade.entry_price);
+  const [stop, setStop] = useState(trade.initial_stop);
+  const [takeProfit, setTakeProfit] = useState(trade.take_profit ?? "");
+  const [qty, setQty] = useState(trade.total_quantity);
+  const [sizeType, setSizeType] = useState<SizeType>(trade.size_type);
+  const [sizeValue, setSizeValue] = useState(trade.size_value ?? trade.total_quantity);
+  const [sizeUnit, setSizeUnit] = useState(trade.size_unit ?? "USD");
+  const [strategyId, setStrategyId] = useState<string>(trade.strategy_id ? String(trade.strategy_id) : "");
+  const [notes, setNotes] = useState(trade.notes ?? "");
+  const [chartUrl, setChartUrl] = useState(trade.chart_url ?? "");
+  const [screenshotPath, setScreenshotPath] = useState(trade.screenshot_path ?? "");
+  const [tagsInput, setTagsInput] = useState(trade.tags.join(", "));
+  const [manualPnl, setManualPnl] = useState(trade.manual_pnl ?? "");
+  const [busy, setBusy] = useState(false);
+
+  async function pickScreenshot() {
+    try {
+      const file = await open({
+        title: "Select screenshot",
+        multiple: false,
+        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }],
+      });
+      if (file && !Array.isArray(file)) setScreenshotPath(file);
+    } catch (e) { setError(String(e)); }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!symbol || !entry || !stop || !qty) { setError("All fields required."); return; }
+    setBusy(true);
+    try {
+      await updateTrade(trade.id, {
+        symbol: symbol.trim().toUpperCase(),
+        entry_price: entry,
+        initial_stop: stop,
+        take_profit: takeProfit || null,
+        total_quantity: qty,
+        outcome: trade.outcome,
+        size_type: sizeType,
+        size_value: sizeValue || null,
+        size_unit: sizeType === "money" ? sizeUnit : null,
+        manual_pnl: manualPnl || null,
+        strategy_id: strategyId ? Number(strategyId) : null,
+        notes: notes.trim() || null,
+        chart_url: chartUrl.trim() || null,
+        screenshot_path: screenshotPath || null,
+        tags: tagsInput.split(",").map((t) => t.trim()).filter(Boolean),
+      });
+      onDone();
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <form className="modal modal--wide" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <h3>Edit trade #{trade.id}</h3>
+
+        <div className="modal__grid">
+          <label><span>Symbol</span><input value={symbol} onChange={(e) => setSymbol(e.target.value)} /></label>
+          <label><span>Entry</span><input value={entry} onChange={(e) => setEntry(e.target.value)} /></label>
+          <label><span>Stop</span><input value={stop} onChange={(e) => setStop(e.target.value)} /></label>
+          <label><span>Take Profit</span><input value={takeProfit} onChange={(e) => setTakeProfit(e.target.value)} /></label>
+          <label><span>Quantity</span><input value={qty} onChange={(e) => setQty(e.target.value)} /></label>
+          <label>
+            <span>Size type</span>
+            <select value={sizeType} onChange={(e) => setSizeType(e.target.value as SizeType)}>
+              <option value="lots">Lots</option>
+              <option value="units">Units</option>
+              <option value="money">Money</option>
+            </select>
+          </label>
+          <label>
+            <span>{sizeType === "lots" ? "Lot size" : sizeType === "units" ? "Units" : "Amount"}</span>
+            <input value={sizeValue} onChange={(e) => setSizeValue(e.target.value)} />
+          </label>
+          {sizeType === "money" && (
+            <label><span>Currency</span><input value={sizeUnit} onChange={(e) => setSizeUnit(e.target.value.toUpperCase())} maxLength={4} /></label>
+          )}
+          <label>
+            <span>Strategy</span>
+            <select value={strategyId} onChange={(e) => setStrategyId(e.target.value)}>
+              <option value="">— none —</option>
+              {strategies.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </label>
+          <label className="modal__span-2"><span>Tags (comma separated)</span><input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} /></label>
+          <label className="modal__span-2"><span>Chart URL</span><input value={chartUrl} onChange={(e) => setChartUrl(e.target.value)} /></label>
+          <label className="modal__span-2">
+            <span>Screenshot</span>
+            <div className="screenshot-picker">
+              <input value={screenshotPath} readOnly placeholder="No file selected" />
+              <button type="button" className="btn btn--ghost" onClick={pickScreenshot}>Browse…</button>
+              {screenshotPath && (
+                <button type="button" className="btn btn--ghost" onClick={() => setScreenshotPath("")}>Clear</button>
+              )}
+            </div>
+          </label>
+          <label className="modal__span-2"><span>Notes</span><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></label>
+          <label className="modal__span-2">
+            <span>Manual P&L (optional, overrides computed P&L)</span>
+            <input value={manualPnl} onChange={(e) => setManualPnl(e.target.value)} placeholder="e.g. 420 or -200" />
+          </label>
+        </div>
+
+        <div className="modal__actions">
+          <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn--primary" disabled={busy}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

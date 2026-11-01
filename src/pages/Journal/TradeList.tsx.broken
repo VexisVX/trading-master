@@ -1,0 +1,262 @@
+import { useMemo, useState } from "react";
+import { Trade, computePlannedRR, computeRealizedR, computePnl } from "../../lib/tradesApi";
+import { Strategy } from "../../lib/strategiesApi";
+import { IconEdit, IconTrash, IconImage, IconLink } from "../../components/ui/Icons";
+
+interface Props {
+  trades: Trade[];
+  strategies: Strategy[];
+  onAddExit: (t: Trade) => void;
+  onEdit: (t: Trade) => void;
+  onDelete: (t: Trade) => void;
+  onViewScreenshot: (path: string) => void;
+  onViewSl: (t: Trade) => void;
+}
+
+function formatSize(t: Trade): string {
+  const v = t.size_value ?? t.total_quantity;
+  const n = Number(v);
+  const num = Number.isFinite(n)
+    ? n.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    : v;
+  if (t.size_type === "money") return `${num} ${t.size_unit ?? ""}`.trim();
+  if (t.size_type === "lots") return `${num} lot${n === 1 ? "" : "s"}`;
+  return `${num} unit${n === 1 ? "" : "s"}`;
+}
+
+
+function closedPct(t: Trade): string {
+  const orig = Number(t.original_quantity);
+  const current = Number(t.total_quantity);
+  if (!Number.isFinite(orig) || orig === 0) return "—";
+  const closed = ((orig - current) / orig) * 100;
+  if (closed <= 0) return "—";
+  return `${closed.toFixed(0)}%`;
+}
+
+function rrText(t: Trade): { text: string; tone: "pos" | "neg" | "dim" } {
+  const r = computeRealizedR(t);
+  if (r == null) return { text: "—", tone: "dim" };
+  return {
+    text: `${r >= 0 ? "+" : ""}${r.toFixed(2)}R`,
+    tone: r > 0 ? "pos" : r < 0 ? "neg" : "dim",
+  };
+}
+
+function planRRText(t: Trade): string {
+  const rr = computePlannedRR(t);
+  return rr == null ? "—" : `1 : ${rr.toFixed(2)}`;
+}
+
+function pnlText(t: Trade): { text: string; tone: "pos" | "neg" | "dim" } {
+  const p = computePnl(t);
+  if (p == null) return { text: "—", tone: "dim" };
+  return {
+    text: `${p >= 0 ? "+" : ""}${p.toFixed(2)}`,
+    tone: p > 0 ? "pos" : p < 0 ? "neg" : "dim",
+  };
+}
+
+function outcomeLabel(o: string): string {
+  switch (o) {
+    case "tp_hit": return "TP";
+    case "sl_hit": return "SL";
+    case "manual_close": return "Manual";
+    case "breakeven": return "BE";
+    default: return "";
+  }
+}
+
+
+export function TradeList({ trades, strategies, onAddExit, onEdit, onDelete, onViewScreenshot, onViewSl }: Props) {
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "open" | "closed">("all");
+  const [strategyFilter, setStrategyFilter] = useState<string>("all");
+  const [outcomeFilter, setOutcomeFilter] = useState<string>("all");
+  const [minR, setMinR] = useState<string>("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const strategyName = (id: number | null): string => {
+    if (id == null) return "—";
+    return strategies.find((s) => s.id === id)?.name ?? `#${id}`;
+  };
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toUpperCase();
+    return trades.filter((t) => {
+      if (filter !== "all" && t.status !== filter) return false;
+      if (strategyFilter !== "all") {
+        if (String(t.strategy_id ?? "") !== strategyFilter) return false;
+      }
+      if (outcomeFilter !== "all" && t.outcome !== outcomeFilter) return false;
+      if (minR) {
+        const r = computeRealizedR(t);
+        if (r == null || r < Number(minR)) return false;
+      }
+      if (q) {
+        const hay = [t.symbol, t.notes ?? "", ...t.tags].join(" ").toUpperCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [trades, query, filter, strategyFilter, outcomeFilter, minR]);
+
+  return (
+    <div className="trade-list">
+      <div className="trade-list__toolbar">
+        <input
+          placeholder="Search symbol, tags, notes…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <div className="trade-list__segments">
+          {(["all", "open", "closed"] as const).map((f) => (
+            <button
+              key={f}
+              className={`seg ${filter === f ? "is-active" : ""}`}
+              onClick={() => setFilter(f)}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+        <button
+          className="btn btn--ghost btn--small"
+          onClick={() => setShowAdvanced((v) => !v)}
+        >
+          {showAdvanced ? "Hide filters" : "Filters"}
+        </button>
+        <span className="trade-list__count">{filtered.length} / {trades.length}</span>
+      </div>
+
+      {showAdvanced && (
+        <div className="trade-list__advanced">
+          <label>
+            <span>Strategy</span>
+            <select value={strategyFilter} onChange={(e) => setStrategyFilter(e.target.value)}>
+              <option value="all">All</option>
+              {strategies.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Outcome</span>
+            <select value={outcomeFilter} onChange={(e) => setOutcomeFilter(e.target.value)}>
+              <option value="all">All</option>
+              <option value="tp_hit">TP</option>
+              <option value="sl_hit">SL</option>
+              <option value="manual_close">Manual</option>
+              <option value="breakeven">BE</option>
+            </select>
+          </label>
+          <label>
+            <span>Min R</span>
+            <input value={minR} onChange={(e) => setMinR(e.target.value)} placeholder="e.g. 1" />
+          </label>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="empty-state">
+          <span className="empty-state__icon">▤</span>
+          <span className="empty-state__title">No trades yet</span>
+          <span className="empty-state__hint">
+            Add your first trade using the form above. It will appear here with its status and R-multiple.
+          </span>
+        </div>
+      ) : (
+        <table className="trades">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Symbol</th>
+              <th>Strategy</th>
+              <th>Tags</th>
+              <th>Side</th>
+              <th>Entry</th>
+              <th>Stop</th>
+              <th>Qty</th>
+              <th>Size</th>
+              <th>Closed</th>
+              <th>R</th>
+              <th>Plan R:R</th>
+              <th>P&L</th>
+              <th>Status</th>
+              <th>Opened</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody className="stagger-rows">
+            {filtered.map((t) => (
+              <tr key={t.id}>
+                <td className="mono dim">{t.id}</td>
+                <td>{t.symbol}</td>
+                <td>
+                  {t.strategy_id != null
+                    ? <span className="pill pill--open">{strategyName(t.strategy_id)}</span>
+                    : <span className="dim">—</span>}
+                </td>
+                <td>
+                  {t.tags.length > 0
+                    ? t.tags.map((tag, i) => <span key={i} className="tag-chip">{tag}</span>)
+                    : <span className="dim">—</span>}
+                </td>
+                <td className={t.side === "long" ? "side-long" : "side-short"}>{t.side}</td>
+                <td className="mono">{t.entry_price}</td>
+                <td className="mono">{t.initial_stop}</td>
+                <td className="mono">{t.total_quantity}</td>
+                <td className="mono dim">{formatSize(t)}</td>
+                <td className="mono dim">{closedPct(t)}</td>
+                <td className={`mono ${rrText(t).tone}`}>{rrText(t).text}</td>
+                <td className="mono dim">{planRRText(t)}</td>
+                <td className={`mono ${pnlText(t).tone}`}>{pnlText(t).text}</td>
+                <td>
+                  <span className={`pill pill--${t.status}`}>{t.status}</span>
+                  {t.status === "closed" && t.outcome !== "open" && (
+                    <span className={`pill outcome-pill outcome-pill--${t.outcome}`}>
+                      {outcomeLabel(t.outcome)}
+                    </span>
+                  )}
+                </td>
+                <td className="mono dim">{t.opened_at.slice(0, 10)}</td>
+                <td>
+                  <div className="row-actions">
+                    {t.status === "open" && (
+                      <button className="btn btn--small" onClick={() => onAddExit(t)} title="Record exit">Close</button>
+                    )}
+                    {t.chart_url && (
+                      <a
+                        className="icon-btn"
+                        href={t.chart_url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        title="Open chart"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <IconLink />
+                      </a>
+                    )}
+                    {t.screenshot_path && (
+                      <button
+                        className="icon-btn"
+                        onClick={() => onViewScreenshot(t.screenshot_path!)}
+                        title="View screenshot"
+                      >
+                        <IconImage />
+                      </button>
+                    )}
+                    <button className="icon-btn" onClick={() => onViewSl(t)} title="SL history">↕</button>
+                    <button className="icon-btn" onClick={() => onEdit(t)} title="Edit">
+                      <IconEdit />
+                    </button>
+                    <button className="icon-btn icon-btn--danger" onClick={() => onDelete(t)} title="Delete">
+                      <IconTrash />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}

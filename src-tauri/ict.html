@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ict</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Georgia, 'Times New Roman', serif; background: #e8e3d8; color: #1a1a1a; padding: 32px 16px; line-height: 1.6; }
+.page { max-width: 820px; margin: 0 auto; background: #fdfcfb; padding: 56px 64px; box-shadow: 0 2px 24px rgba(0,0,0,0.15); }
+.header { text-align: center; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 2px solid #0d9488; }
+.title { font-size: 32px; font-weight: 400; letter-spacing: 4px; color: #1a1a1a; text-transform: uppercase; }
+.subtitle { font-size: 12px; font-style: italic; color: #555; margin-top: 6px; letter-spacing: 1px; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 32px; margin-bottom: 28px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #999; }
+.field-line { border-bottom: 1px solid #d8d0c0; height: 24px; display: flex; align-items: flex-end; padding-bottom: 2px; font-size: 13px; color: #1a1a1a; }
+.section { margin-bottom: 24px; }
+.section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #0d9488; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #d8d0c0; }
+.group { margin-bottom: 20px; }
+.group-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: #555; margin-bottom: 8px; font-style: italic; }
+.item { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; font-size: 14px; border-bottom: 1px dotted #d8d0c0; }
+.item:last-child { border-bottom: none; }
+.item.is-checked .text { text-decoration: line-through; color: #999; }
+.check { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1.5px solid #999; border-radius: 2px; font-size: 11px; color: #0d9488; flex-shrink: 0; margin-top: 2px; }
+.item.is-checked .check { background: rgba(13,148,136,0.06); border-color: #0d9488; }
+.notes-area { min-height: 180px; border: 1px solid #d8d0c0; border-radius: 3px; padding: 12px; background: #fafaf7; background-image: repeating-linear-gradient(#fafaf7 0px, #fafaf7 27px, #d8d0c0 27px, #d8d0c0 28px); }
+.notes-area.small { min-height: 100px; }
+.footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #d8d0c0; text-align: center; font-size: 10px; font-style: italic; color: #999; }
+@media print { body { background: white; padding: 0; } .page { box-shadow: none; padding: 40px 50px; } }
+</style>
+</head>
+<body>
+<div class="page">
+<div class="header"><div class="title">Trading Plan</div><div class="subtitle">Pre-Trade Checklist &amp; Journal</div></div>
+<div class="fields">
+<div class="field"><span class="field-label">Plan</span><div class="field-line">ict</div></div>
+<div class="field"><span class="field-label">Strategy</span><div class="field-line">Indicator-Based</div></div>
+<div class="field"><span class="field-label">Date</span><div class="field-line"></div></div>
+<div class="field"><span class="field-label">Time</span><div class="field-line"></div></div>
+<div class="field"><span class="field-label">Asset / Symbol</span><div class="field-line"></div></div>
+<div class="field"><span class="field-label">Timeframe</span><div class="field-line"></div></div>
+</div>
+<div class="section"><div class="section-title">Pre-Trade Checklist</div><div class="group"><div class="group-title">HTF / Long Term</div><div class="item "><span class="check"></span><span class="text">1H: MA cross</span></div><div class="item "><span class="check"></span><span class="text">1H: RSI level</span></div></div><div class="group"><div class="group-title">Entry / LTF</div><div class="item "><span class="check"></span><span class="text">15M: MACD signal</span></div><div class="item "><span class="check"></span><span class="text">15M: Entry confirmation</span></div></div></div>
+<div class="section"><div class="section-title">Result</div>
+<div class="fields" style="grid-template-columns: 1fr 1fr 1fr;">
+<div class="field"><span class="field-label">Entry</span><div class="field-line"></div></div>
+<div class="field"><span class="field-label">Stop</span><div class="field-line"></div></div>
+<div class="field"><span class="field-label">Target</span><div class="field-line"></div></div>
+<div class="field"><span class="field-label">R:R Planned</span><div class="field-line"></div></div>
+<div class="field"><span class="field-label">R Realized</span><div class="field-line"></div></div>
+<div class="field"><span class="field-label">Outcome</span><div class="field-line"></div></div>
+</div></div>
+<div class="section"><div class="section-title">Notes &amp; Observations</div><div class="notes-area"></div></div>
+<div class="section"><div class="section-title">Review (after trade)</div><div class="notes-area small"></div></div>
+<div class="footer">Generated 10/22/2026 · Trading Manager v0.1.0</div>
+</div>
+</body>
+</html>

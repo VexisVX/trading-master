@@ -1,0 +1,314 @@
+import { useEffect, useState } from "react";
+import { getSummary, Summary } from "../../lib/analyticsApi";
+import { getGoals, AccountGoals } from "../../lib/goalsApi";
+import { LineChart } from "../../components/charts/LineChart";
+import { BarChart } from "../../components/charts/BarChart";
+import { Donut } from "../../components/charts/Donut";
+import "./Dashboard.css";
+
+export function Dashboard() {
+  const [s, setS] = useState<Summary | null>(null);
+  const [goals, setGoals] = useState<AccountGoals | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setS(await getSummary());
+        try {
+          const { getActiveAccountId } = await import("../../lib/accountsApi");
+          const accId = await getActiveAccountId();
+          setGoals(await getGoals(accId));
+        } catch { /* ignore */ }
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return <div className="dash"><div className="card">Loading…</div></div>;
+  if (error) return <div className="dash"><div className="card">Error: {error}</div></div>;
+  if (!s) return <div className="dash"><div className="card">No data</div></div>;
+
+  return (
+    <div className="dash">
+      <h1 className="dash__title">Dashboard</h1>
+
+      <div className="dash__grid">
+        <div className="card">
+          <div className="stat__label">Balance</div>
+          <div className="stat__value mono">${Number(s.current_equity).toLocaleString()}</div>
+        </div>
+        <div className="card">
+          <div className="stat__label">Net P&L</div>
+          <div className="stat__value mono">${Number(s.net_pnl).toFixed(2)}</div>
+        </div>
+        <div className="card">
+          <div className="stat__label">Win Rate</div>
+          <div className="stat__value mono">{Number(s.win_rate_pct).toFixed(1)}%</div>
+        </div>
+        <div className="card">
+          <div className="stat__label">Open</div>
+          <div className="stat__value mono">{s.open_trades}</div>
+        </div>
+      </div>
+
+      <div className="dash__row dash__row--3">
+        <div className="card">
+          <div className="card__head">
+            <h3>R-Multiple Distribution</h3>
+          </div>
+          {s.r_distribution.some((b) => b.count > 0) ? (
+            <BarChart
+              data={s.r_distribution.map((b) => ({ label: b.label.replace("R", ""), v: b.count }))}
+              height={180}
+            />
+          ) : (
+            <div className="dash__placeholder">No R data yet.</div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card__head">
+            <h3>Win / Loss</h3>
+          </div>
+          {s.wins + s.losses > 0 ? (
+            <Donut wins={s.wins} losses={s.losses} />
+          ) : (
+            <div className="dash__placeholder">No results yet.</div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card__head">
+            <h3>Key Stats</h3>
+          </div>
+          <ul className="risk-list">
+            <li>
+              <span>Profit factor</span>
+              <span className="mono">{Number(s.profit_factor).toFixed(2)}</span>
+            </li>
+            <li>
+              <span>Expectancy</span>
+              <span className={`mono ${Number(s.expectancy_r) >= 0 ? "pos" : "neg"}`}>
+                {Number(s.expectancy_r) >= 0 ? "+" : ""}{Number(s.expectancy_r).toFixed(2)}R
+              </span>
+            </li>
+            <li>
+              <span>Avg win</span>
+              <span className="mono pos">
+                +{Number(s.avg_win_r).toFixed(2)}R
+              </span>
+            </li>
+            <li>
+              <span>Avg loss</span>
+              <span className="mono neg">
+                {Number(s.avg_loss_r).toFixed(2)}R
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div className="dash__row dash__row--2">
+        {goals && (
+          <GoalsCard
+            goals={goals}
+            netPnl={s.net_pnl}
+            initialBalance={s.initial_balance}
+          />
+        )}
+        <MotivationCard
+          netPnl={s.net_pnl}
+          closedTrades={s.closed_trades}
+        />
+      </div>
+
+      <div className="card">
+        <h3>Closed Trades: {s.closed_trades}</h3>
+      </div>
+
+      <div className="dash__row dash__row--2">
+        <div className="card">
+          <div className="card__head">
+            <h3>Equity Curve</h3>
+            <span className="card__badge">{s.closed_trades} trades</span>
+          </div>
+          {s.equity_curve.length > 1 ? (
+            <LineChart
+              data={s.equity_curve.map((p) => ({ t: p.t, v: Number(p.v) }))}
+              formatY={(v) => `$${Math.round(v).toLocaleString()}`}
+              height={220}
+            />
+          ) : (
+            <div className="dash__placeholder">Equity curve appears after your first closed trade.</div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card__head">
+            <h3>Drawdown</h3>
+            <span className="card__badge">max {Number(s.max_drawdown_pct).toFixed(1)}%</span>
+          </div>
+          {s.drawdown_curve.length > 1 ? (
+            <LineChart
+              data={s.drawdown_curve.map((p) => ({ t: p.t, v: Number(p.v) }))}
+              color="var(--danger)"
+              formatY={(v) => `${v.toFixed(1)}%`}
+              height={220}
+            />
+          ) : (
+            <div className="dash__placeholder">Drawdown will be shown once you have trades.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ============================================================
+// Goals Card
+// ============================================================
+function GoalsCard({ goals, netPnl, initialBalance }: {
+  goals: AccountGoals;
+  netPnl: string;
+  initialBalance: string;
+}) {
+  const pnl = Number(netPnl);
+  const bal = Number(initialBalance);
+  const pnlPct = bal > 0 ? (pnl / bal) * 100 : 0;
+
+  const targets = [
+    { label: "Daily", target: Number(goals.daily_target_pct), period: "today" },
+    { label: "Weekly", target: Number(goals.weekly_target_pct), period: "this week" },
+    { label: "Monthly", target: Number(goals.monthly_target_pct), period: "this month" },
+  ];
+
+  return (
+    <div className="card goals-card">
+      <div className="card__head">
+        <h3>Goals</h3>
+        <span className={`card__badge ${pnlPct >= targets[2].target ? "ok" : ""}`}>
+          {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}% this month
+        </span>
+      </div>
+      <div className="goals-list">
+        {targets.map((t) => {
+          const pct = t.target > 0 ? Math.min(100, Math.max(0, (pnlPct / t.target) * 100)) : 0;
+          const done = pct >= 100;
+          const positive = pnlPct >= 0;
+          return (
+            <div key={t.label} className="goal-bar">
+              <div className="goal-bar__head">
+                <span className="goal-bar__label">{t.label} target</span>
+                <span className={`mono ${positive ? "pos" : "neg"}`}>
+                  {positive ? "+" : ""}{pnlPct.toFixed(2)}% / {t.target}%
+                </span>
+              </div>
+              <div className="goal-bar__track">
+                <div
+                  className={`goal-bar__fill ${done ? "is-done" : ""} ${!positive ? "is-negative" : ""}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="goal-bar__hint">
+                {done ? "✓ Target reached" : `${pct.toFixed(0)}% toward ${t.period} target`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Motivation Card
+// ============================================================
+const MOTIVATION_MESSAGES = [
+  { min: 1000, msg: "Extraordinary. Discipline is your greatest asset." },
+  { min: 500,  msg: "Strong performance. Consistency compounds quietly." },
+  { min: 200,  msg: "Well earned. Keep following your plan, not your emotions." },
+  { min: 50,   msg: "You are green. Stay patient — the market rewards restraint." },
+  { min: 1,    msg: "Small steps forward. Trust your process." },
+  { min: -50,  msg: "A pause is not a failure. Review, then continue." },
+  { min: -200, msg: "Protect your capital. The next trade is a fresh start." },
+  { min: -500, msg: "Slow down. Reduce size, rebuild clarity." },
+  { min: -1000,msg: "A losing streak is not a losing trader. Breathe." },
+  { min: -999999, msg: "Stop. Rest. Tomorrow is a new opportunity." },
+];
+
+function MotivationCard({ netPnl, closedTrades }: {
+  netPnl: string;
+  closedTrades: number;
+}) {
+  const pnl = Number(netPnl);
+  const message = MOTIVATION_MESSAGES.find((m) => pnl >= m.min);
+
+  const [customText, setCustomText] = useState<string>(() => {
+    try { return localStorage.getItem("motivation.custom") || ""; } catch { return ""; }
+  });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(customText);
+
+  const displayedText = customText.trim() || message?.msg || "Keep going.";
+
+  function saveCustom() {
+    const v = draft.trim();
+    setCustomText(v);
+    try { localStorage.setItem("motivation.custom", v); } catch { /* ignore */ }
+    setEditing(false);
+  }
+
+  return (
+    <>
+      <div className="motivation-card">
+        <div className="motivation-card__bg" />
+        <div className="motivation-card__inner">
+          <div className="motivation-card__head">
+            <span className="motivation-card__label">Motivation</span>
+            <button
+              className="motivation-card__btn"
+              onClick={() => { setEditing(true); setDraft(customText); }}
+              title="Add your own message"
+            >
+              +
+            </button>
+          </div>
+          <p className="motivation-card__msg">{displayedText}</p>
+          {closedTrades === 0 && (
+            <p className="motivation-card__sub">Start with your first trade.</p>
+          )}
+        </div>
+      </div>
+
+      {editing && (
+        <div className="modal-backdrop" onClick={() => setEditing(false)}>
+          <div className="modal motivation-edit" onClick={(e) => e.stopPropagation()}>
+            <button className="screenshot-close" onClick={() => setEditing(false)}>×</button>
+            <h3>Your motivation</h3>
+            <p className="dim">A phrase that keeps you grounded.</p>
+            <textarea
+              className="motivation-edit__input"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="e.g. 'Protect capital. Trust the process.'"
+              maxLength={240}
+              rows={4}
+              autoFocus
+            />
+            <div className="motivation-edit__counter">{draft.length} / 240</div>
+            <div className="modal__actions">
+              <button className="btn btn--ghost" onClick={() => setEditing(false)}>Cancel</button>
+              <button className="btn btn--primary" onClick={saveCustom}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

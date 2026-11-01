@@ -1,0 +1,203 @@
+.accounts { display: flex; flex-direction: column; gap: 14px; }
+
+.accounts__tabs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+.acc-tab {
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-1);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.12s, border-color 0.12s;
+}
+.acc-tab:hover { color: var(--text-0); }
+.acc-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); }
+.acc-tab:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.accounts__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.acc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.12s, box-shadow 0.12s;
+}
+.acc-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.acc-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.acc-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.acc-card__name { font-size: 14px; font-weight: 600; }
+
+.acc-kind {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+.acc-kind--personal { background: var(--bg-3); color: var(--text-2); }
+.acc-kind--prop_firm {
+  background: rgba(45, 212, 191, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(45, 212, 191, 0.3);
+}
+
+.acc-card__meta {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-1);
+}
+
+.acc-card__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border-radius: 6px;
+}
+.acc-card__stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.acc-card__stats .label {
+  font-size: 10px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.acc-card__stats .value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-0);
+}
+.acc-card__stats .value.pos { color: var(--success); }
+.acc-card__stats .value.neg { color: var(--danger); }
+
+.acc-card__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ============================================================
+   Create Account Modal
+   ============================================================ */
+
+.ca-type-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #888);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.ca-type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.ca-type-card {
+  background: var(--bg-0, #0b0f14);
+  border: 1.5px solid var(--border, #232c38);
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--fg, #eaeaea);
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.ca-type-card:hover {
+  border-color: var(--accent, #2dd4bf);
+}
+.ca-type-card.is-active {
+  border-color: var(--accent, #2dd4bf);
+  background: rgba(45, 212, 191, 0.06);
+}
+
+.ca-type-card__icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+.ca-type-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.ca-type-card__desc {
+  font-size: 11px;
+  color: var(--muted, #888);
+  line-height: 1.5;
+}
+
+.ca-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #888);
+  font-weight: 600;
+  margin: 20px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, #1a222c);
+}
+
+.ca-explainer {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: rgba(251, 191, 36, 0.05);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 8px;
+}
+.ca-explainer--info {
+  background: rgba(45, 212, 191, 0.05);
+  border-color: rgba(45, 212, 191, 0.2);
+}
+.ca-explainer__title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--fg, #eaeaea);
+}
+.ca-explainer__list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted, #888);
+}
+.ca-explainer__list strong {
+  color: var(--fg, #eaeaea);
+  font-variant-numeric: tabular-nums;
+}

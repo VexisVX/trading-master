@@ -1,0 +1,54 @@
+import { useEffect, useState } from "react";
+import { getSummary, Summary } from "../../lib/analyticsApi";
+import "./Dashboard.css";
+
+export function Dashboard() {
+  const [s, setS] = useState<Summary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setS(await getSummary());
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return <div className="dash"><div className="card">Loading…</div></div>;
+  if (error) return <div className="dash"><div className="card">Error: {error}</div></div>;
+  if (!s) return <div className="dash"><div className="card">No data</div></div>;
+
+  return (
+    <div className="dash">
+      <h1 className="dash__title">Dashboard</h1>
+
+      <div className="dash__grid">
+        <div className="card">
+          <div className="stat__label">Balance</div>
+          <div className="stat__value mono">${Number(s.current_equity).toLocaleString()}</div>
+        </div>
+        <div className="card">
+          <div className="stat__label">Net P&L</div>
+          <div className="stat__value mono">${Number(s.net_pnl).toFixed(2)}</div>
+        </div>
+        <div className="card">
+          <div className="stat__label">Win Rate</div>
+          <div className="stat__value mono">{Number(s.win_rate_pct).toFixed(1)}%</div>
+        </div>
+        <div className="card">
+          <div className="stat__label">Open</div>
+          <div className="stat__value mono">{s.open_trades}</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Closed Trades: {s.closed_trades}</h3>
+      </div>
+    </div>
+  );
+}

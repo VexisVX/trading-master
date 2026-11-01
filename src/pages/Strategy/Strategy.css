@@ -1,0 +1,130 @@
+.strategy { display: flex; flex-direction: column; gap: 16px; }
+.strategy__head { display: flex; align-items: center; justify-content: space-between; }
+.strategy__head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.strategy__empty {
+  padding: 30px; text-align: center;
+  color: var(--text-2); font-size: 13px;
+  border: 1px dashed var(--border);
+}
+.strategy__grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;
+}
+.strategy-card { display: flex; flex-direction: column; gap: 10px; }
+.strategy-card__head { display: flex; align-items: center; justify-content: space-between; }
+.strategy-card__head h3 { margin: 0; font-size: 14px; }
+.strategy-card__desc { margin: 0; font-size: 12.5px; color: var(--text-1); }
+.strategy-card__tfs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tf-chip {
+  display: inline-flex; flex-direction: column;
+  padding: 5px 9px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 11.5px;
+}
+.tf-chip__name { color: var(--accent); font-weight: 600; }
+.tf-chip__count { color: var(--text-2); font-size: 10.5px; }
+.strategy-card__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- Form ---------- */
+.strategy-form { display: flex; flex-direction: column; gap: 14px; }
+.strategy-form__row { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+.strategy-form label { display: flex; flex-direction: column; gap: 4px; }
+.strategy-form label > span,
+.strategy-form__label {
+  font-size: 11px; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.strategy-form__tfs { display: flex; flex-direction: column; gap: 8px; }
+.tf-checkboxes { display: flex; flex-wrap: wrap; gap: 8px; }
+.tf-checkbox {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 12.5px;
+  cursor: pointer;
+}
+.tf-checkbox input { display: none; }
+.tf-checkbox.is-on { background: var(--accent-soft); border-color: rgba(45,212,191,0.35); color: var(--accent); }
+
+.tf-block {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+.tf-block__head { display: flex; align-items: center; justify-content: space-between; }
+.tf-block__head h4 { margin: 0; font-size: 13px; color: var(--accent); }
+.tf-block__empty { font-size: 12px; color: var(--text-2); padding: 4px 0; }
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 100px 2fr auto auto;
+  gap: 6px; align-items: center;
+}
+.field-row__req {
+  display: inline-flex; flex-direction: row; align-items: center; gap: 4px;
+  font-size: 11.5px; color: var(--text-2);
+}
+
+.strategy-form__actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+.strategy-form__actions { position: sticky; bottom: 0; }
+
+/* Templates grid */
+.tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.tpl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.12s;
+}
+.tpl-card:hover {
+  background: var(--bg-3);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.tpl-card__label { font-size: 13.5px; font-weight: 600; color: var(--text-0); }
+.tpl-card__desc { font-size: 11.5px; color: var(--text-1); line-height: 1.4; }
+.tpl-card__tfs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tpl-tf {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.version-json {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.version-json h4 { margin: 0 0 8px; font-size: 12px; color: var(--text-1); }
+.version-json pre {
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--text-1);
+  max-height: 300px;
+  overflow: auto;
+  font-family: var(--mono);
+  white-space: pre-wrap;
+  word-break: break-all;
+}

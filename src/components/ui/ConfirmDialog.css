@@ -1,0 +1,11 @@
+.confirm-dialog {
+  min-width: 380px;
+  max-width: 440px;
+}
+.confirm-dialog h3 { margin: 0 0 10px; font-size: 15px; }
+.confirm-dialog__body {
+  margin: 0 0 16px;
+  color: var(--text-1);
+  font-size: 13px;
+  line-height: 1.5;
+}

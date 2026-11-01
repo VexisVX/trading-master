@@ -1,0 +1,71 @@
+import { useEffect, useState } from "react";
+import { getSetting } from "../../lib/settingsApi";
+import { applyTheme, applyAccent, applyRadius, applyFontSize, applyMotion } from "../../lib/theme";
+import { Sidebar, Page } from "./Sidebar";
+import { TopBar } from "./TopBar";
+import { Dashboard } from "../../pages/Dashboard/Dashboard";
+import { Journal } from "../../pages/Journal/Journal";
+import { LiveRisk } from "../../pages/LiveRisk/LiveRisk";
+import { TradingPlan } from "../../pages/TradingPlan/TradingPlan";
+import { News } from "../../pages/News/News";
+import { Strategy } from "../../pages/Strategy/Strategy";
+import { Analytics } from "../../pages/Analytics/Analytics";
+import { Settings } from "../../pages/Settings/Settings";
+import { Accounts } from "../../pages/Accounts/Accounts";
+import "./AppShell.css";
+
+const meta: Record<Page, { title: string; subtitle: string }> = {
+  dashboard: { title: "Dashboard", subtitle: "Overview of your trading performance" },
+  journal:   { title: "Trade Journal", subtitle: "Record and review your trades" },
+  "live-risk": { title: "Live Risk Calculator", subtitle: "Size a trade with your broker's real numbers" },
+  "trading-plan": { title: "Trading Plan", subtitle: "Pre-trade checklist per strategy · export to print/PDF" },
+  news: { title: "Economic Calendar", subtitle: "This week's high-impact events" },
+  strategy:  { title: "Strategy", subtitle: "Plan multi-timeframe setups" },
+  analytics: { title: "Analytics", subtitle: "Breakdowns by strategy, month, day, session" },
+  accounts:  { title: "Accounts", subtitle: "Manage trading accounts and risk rules" },
+  settings:  { title: "Settings", subtitle: "Appearance, data, integrations" },
+};
+
+export function AppShell() {
+  const [page, setPage] = useState<Page>("dashboard");
+
+  // Apply saved appearance preferences on startup
+  useEffect(() => {
+    (async () => {
+      try {
+        const theme = (await getSetting("ui.theme")) as any;
+        const accent = (await getSetting("ui.accent")) as any;
+        const radius = (await getSetting("ui.radius")) as any;
+        const fontSize = (await getSetting("ui.font_size")) as any;
+        const motion = (await getSetting("ui.motion")) as any;
+        if (theme) applyTheme(theme);
+        if (accent) applyAccent(accent);
+        if (radius) applyRadius(radius);
+        if (fontSize) applyFontSize(fontSize);
+        if (motion) applyMotion(motion);
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  return (
+    <div className="app-shell">
+      <Sidebar active={page} onNavigate={setPage} />
+      <div className="app-shell__main">
+        <TopBar title={meta[page].title} subtitle={meta[page].subtitle} />
+        <main className="app-shell__content">
+          {page === "dashboard" && <div style={{padding: 20}}>DASHBOARD TEST WORKS</div>}
+          {page === "journal"   && <Journal />}
+            <div style={{ display: page === "live-risk" ? "contents" : "none" }}>
+              <LiveRisk />
+            </div>
+            {page === "trading-plan" && <TradingPlan />}
+          {page === "strategy"  && <Strategy />}
+          {page === "analytics" && <Analytics />}
+          {page === "news" && <News />}
+            {page === "accounts"  && <Accounts />}
+            {page === "settings"  && <Settings />}
+        </main>
+      </div>
+    </div>
+  );
+}

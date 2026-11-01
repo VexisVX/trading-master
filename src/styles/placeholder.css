@@ -1,0 +1,13 @@
+.placeholder-page {
+  padding: 8px 4px;
+}
+.placeholder-page h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.placeholder-page p {
+  margin: 0 0 8px;
+  color: var(--text-1);
+  font-size: 13.5px;
+}

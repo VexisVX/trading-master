@@ -1,0 +1,47 @@
+.fwh {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.fwh__label {
+  font-size: 11px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.fwh__control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.fwh__control > input,
+.fwh__control > textarea,
+.fwh__control > select {
+  padding-right: 32px;
+  width: 100%;
+}
+
+.fwh__help {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.fwh__help .helptip__trigger {
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  background: var(--bg-2);
+}
+
+.fwh__help .helptip__trigger:hover {
+  background: var(--accent-soft);
+}

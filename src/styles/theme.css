@@ -1,0 +1,719 @@
+:root {
+  color-scheme: dark;
+  --bg-0: #0b0f14;
+  --bg-1: #11161d;
+  --bg-2: #161d26;
+  --bg-3: #1d2530;
+  --border: #232c38;
+  --text-0: #e6edf3;
+  --text-1: #9aa7b4;
+  --text-2: #6b7886;
+  --accent: #2dd4bf;
+  --accent-dim: #14b8a6;
+  --accent-soft: rgba(45, 212, 191, 0.12);
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --success: #34d399;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family: var(--font);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+a { color: var(--accent); text-decoration: none; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--bg-3);
+  border-radius: 5px;
+  border: 2px solid var(--bg-1);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--border); }
+
+.mono { font-family: var(--mono); }
+
+/* ============================================================
+   FORM CONTROLS — single source of truth
+   Any input/textarea/select in the app inherits these.
+   Component CSS must NOT re-declare these basics.
+   ============================================================ */
+input[type="text"],
+input[type="number"],
+input[type="datetime-local"],
+input[type="date"],
+input[type="time"],
+input[type="email"],
+input[type="password"],
+input:not([type]),
+textarea,
+select {
+  background-color: var(--bg-0);
+  color: var(--text-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.12s;
+  min-height: 32px;
+  box-sizing: border-box;
+}
+
+input[type="text"]:hover,
+input[type="number"]:hover,
+input[type="datetime-local"]:hover,
+input[type="date"]:hover,
+input[type="time"]:hover,
+input[type="email"]:hover,
+input[type="password"]:hover,
+input:not([type]):hover,
+textarea:hover,
+select:hover {
+  border-color: var(--bg-3);
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="datetime-local"]:focus,
+input[type="date"]:focus,
+input[type="time"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input:not([type]):focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-2);
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---------- Custom native select (WebKit-safe) ---------- */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%239aa7b4' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+  cursor: pointer;
+}
+
+/* Force dropdown menu items readable in WebKitGTK */
+select option {
+  background-color: var(--bg-2);
+  color: var(--text-0);
+}
+
+/* ---------- Checkbox: minimal but readable ---------- */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  min-height: 15px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background-color: var(--bg-0);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+input[type="checkbox"]:hover { border-color: var(--bg-3); }
+input[type="checkbox"]:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+input[type="checkbox"]:checked::after {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid #062b26;
+  border-bottom: 2px solid #062b26;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+
+/* ---------- Generic label typography ---------- */
+label {
+  font-size: 13px;
+  color: var(--text-0);
+}
+
+/* Section labels (span immediately inside a label that is uppercased) */
+label > span:first-child {
+  font-size: 11px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* ============================================================
+   MOTION — subtle, non-distracting
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.16s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in { animation: none; }
+  * { transition: none !important; }
+}
+
+/* ============================================================
+   POLISH — buttons, cards, hover states, ambient motion
+   ============================================================ */
+
+/* ---------- Buttons (shared shape) ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition:
+    background 0.12s ease-out,
+    border-color 0.12s ease-out,
+    color 0.12s ease-out,
+    transform 0.06s ease-out,
+    box-shadow 0.12s ease-out;
+  user-select: none;
+}
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+.btn--primary {
+  background: var(--accent);
+  color: #052e2b;
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.08) inset;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: #052e2b;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.08) inset, 0 2px 8px var(--accent-soft);
+}
+
+.btn--primary:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.12) inset;
+}
+
+.btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--ghost {
+  background: var(--bg-2);
+  color: var(--text-0);
+  border-color: var(--border);
+}
+.btn--ghost:hover {
+  background: var(--bg-3);
+  border-color: var(--bg-3);
+}
+
+.btn--small {
+  padding: 4px 10px;
+  font-size: 11.5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Danger-tinted ghost for destructive actions */
+.btn--danger {
+  background: rgba(248, 113, 113, 0.08);
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.22);
+}
+.btn--danger:hover {
+  background: rgba(248, 113, 113, 0.16);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fecaca;
+}
+
+/* ---------- Cards: interactive default ---------- */
+.card {
+  transition: border-color 0.12s ease-out, box-shadow 0.16s ease-out;
+}
+.card:hover { border-color: var(--bg-3); }
+.card--interactive:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.28);
+  border-color: var(--bg-3);
+}
+
+/* ---------- Focus halo on form controls ---------- */
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="datetime-local"]:focus,
+input:not([type]):focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---------- Ambient gradient at top of content ---------- */
+.app-shell__content {
+  position: relative;
+}
+.app-shell__content::before {
+  content: "";
+  position: absolute;
+  top: -120px; left: -120px; right: -120px;
+  height: 260px;
+  background:
+    radial-gradient(ellipse at top left, rgba(45,212,191,0.06), transparent 60%),
+    radial-gradient(ellipse at top right, rgba(45,212,191,0.03), transparent 55%);
+  pointer-events: none;
+  z-index: 0;
+}
+.app-shell__content > * { position: relative; z-index: 1; }
+
+/* ---------- Modal entrance ---------- */
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.98) translateY(2px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal-backdrop { animation: fadeIn 0.14s ease-out; }
+.modal { animation: modalIn 0.16s ease-out; }
+
+/* ---------- Tables: row hover ---------- */
+.trades tbody tr { transition: background 0.1s ease-out; }
+.trades tbody tr:hover { background: var(--bg-2); }
+
+/* ---------- Pills ---------- */
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.pill--open {
+  background: rgba(45, 212, 191, 0.14);
+  color: var(--accent);
+  border: 1px solid rgba(45, 212, 191, 0.3);
+}
+.pill--closed {
+  background: var(--bg-3);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+}
+
+/* ---------- Icon button (used for row actions) ---------- */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  transition: background 0.1s, color 0.1s;
+}
+.icon-btn:hover {
+  background: var(--bg-3);
+  color: var(--text-0);
+}
+.icon-btn--danger:hover {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+}
+
+/* ---------- Empty state ---------- */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: var(--text-2);
+  text-align: center;
+}
+.empty-state__icon {
+  font-size: 28px;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+.empty-state__title {
+  font-size: 14px;
+  color: var(--text-1);
+  font-weight: 500;
+}
+.empty-state__hint {
+  font-size: 12.5px;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal, .modal-backdrop { animation: none; }
+}
+
+/* ============================================================
+   MOTION SYSTEM
+   All animations are compositor-friendly: transform + opacity only.
+   No layout-triggering properties (height, top, margin) are animated.
+   ============================================================ */
+
+:root {
+  /* Spring-ish easing — overshoot-free but soft */
+  --ease-out-soft:  cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out-snap:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-snap:   cubic-bezier(0.7, 0, 0.84, 0);
+  --dur-fast:  140ms;
+  --dur-med:   220ms;
+  --dur-slow:  320ms;
+}
+
+/* ---------- Keyframes ---------- */
+
+/* Pop-in: form, cards entering */
+@keyframes mvPopIn {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.985); }
+  60%  { opacity: 1; transform: translateY(-1px) scale(1.002); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Modal: enters from scale + slight rise */
+@keyframes mvModalIn {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Backdrop fade */
+@keyframes mvFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* List stagger */
+@keyframes mvListItem {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Subtle press */
+@keyframes mvPress {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+/* ---------- Utility classes ---------- */
+
+.fade-in { animation: mvFadeIn var(--dur-fast) var(--ease-out-soft) both; }
+
+.pop-in {
+  animation: mvPopIn var(--dur-med) var(--ease-out-snap) both;
+  will-change: transform, opacity;
+}
+.pop-in.is-settled { will-change: auto; }
+
+.modal-backdrop { animation: mvFadeIn var(--dur-fast) var(--ease-out-soft) both; }
+.modal {
+  animation: mvModalIn var(--dur-med) var(--ease-out-snap) both;
+  will-change: transform, opacity;
+  transform-origin: 50% 60%;
+}
+
+/* Stagger: apply .stagger to a container, children animate in sequence */
+.stagger > * {
+  animation: mvListItem var(--dur-med) var(--ease-out-snap) both;
+}
+.stagger > *:nth-child(1)  { animation-delay:   0ms; }
+.stagger > *:nth-child(2)  { animation-delay:  35ms; }
+.stagger > *:nth-child(3)  { animation-delay:  70ms; }
+.stagger > *:nth-child(4)  { animation-delay: 105ms; }
+.stagger > *:nth-child(5)  { animation-delay: 140ms; }
+.stagger > *:nth-child(6)  { animation-delay: 175ms; }
+.stagger > *:nth-child(n+7){ animation-delay: 200ms; }
+
+/* Button press feedback */
+.btn:active { animation: mvPress 120ms var(--ease-out-snap); }
+
+/* Row press (table) */
+.trades tbody tr { will-change: transform; }
+
+/* Card hover lift, GPU-friendly */
+.card--interactive {
+  transition: transform var(--dur-fast) var(--ease-out-snap),
+              border-color var(--dur-fast) var(--ease-out-soft),
+              box-shadow var(--dur-fast) var(--ease-out-soft);
+  will-change: transform;
+}
+.card--interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.32);
+}
+
+/* Respect reduced motion — turn everything off, snap state only */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .pop-in, .fade-in, .stagger > *, .modal, .modal-backdrop {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* Stagger rows in tables — same curve, applied per <tr> */
+.stagger-rows > tr {
+  animation: mvListItem var(--dur-med) var(--ease-out-snap) both;
+}
+.stagger-rows > tr:nth-child(1)  { animation-delay:   0ms; }
+.stagger-rows > tr:nth-child(2)  { animation-delay:  30ms; }
+.stagger-rows > tr:nth-child(3)  { animation-delay:  60ms; }
+.stagger-rows > tr:nth-child(4)  { animation-delay:  90ms; }
+.stagger-rows > tr:nth-child(5)  { animation-delay: 120ms; }
+.stagger-rows > tr:nth-child(n+6){ animation-delay: 150ms; }
+
+/* ---------- Skeleton ---------- */
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--bg-2) 0%,
+    var(--bg-3) 40%,
+    var(--bg-2) 80%);
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
+  animation: skeletonWave 1.2s ease-in-out infinite;
+}
+@keyframes skeletonWave {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.skeleton-line { height: 12px; margin: 6px 0; }
+.skeleton-block { height: 80px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+
+/* ============================================================
+   MOTION OVERRIDES — applied by Settings
+   ============================================================ */
+.motion-off *,
+.motion-off *::before,
+.motion-off *::after {
+  animation-duration: 0ms !important;
+  animation-delay: 0ms !important;
+  transition-duration: 0ms !important;
+  transition-delay: 0ms !important;
+}
+
+.motion-reduced *,
+.motion-reduced *::before,
+.motion-reduced *::after {
+  animation-duration: 120ms !important;
+  animation-delay: 0ms !important;
+  transition-duration: 100ms !important;
+  transition-delay: 0ms !important;
+}
+
+/* Base font-size fallback */
+html {
+  font-size: var(--fs-base, 14px);
+}
+
+
+/* ============================================================
+   GLOBAL FONT SCALE
+   Applied via --fs-scale by Settings → Appearance → Font size
+   ============================================================ */
+html {
+  font-size: calc(14px * var(--fs-scale, 1));
+}
+
+body, #root {
+  font-size: calc(13.5px * var(--fs-scale, 1));
+}
+
+/* ========== Date / Time input (native control theming) ========== */
+
+/* Invert the calendar icon so it's visible on a dark background. */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.85) brightness(1.2);
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.12s;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+/* WebKit date/datetime text color */
+input[type="date"]::-webkit-datetime-edit,
+input[type="time"]::-webkit-datetime-edit,
+input[type="datetime-local"]::-webkit-datetime-edit {
+  color: var(--fg, #eaeaea);
+}
+
+input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+input[type="time"]::-webkit-datetime-edit-fields-wrapper,
+input[type="datetime-local"]::-webkit-datetime-edit-fields-wrapper {
+  background: transparent;
+}
+
+/* Ensure the picker dropdown itself is dark (WebKit) */
+input[type="date"]::-webkit-datetime-edit-text,
+input[type="time"]::-webkit-datetime-edit-text,
+input[type="datetime-local"]::-webkit-datetime-edit-text {
+  color: var(--muted, #888);
+  padding: 0 2px;
+}
+
+/* ========== Journal: Opened-at time picker (HH:MM) ========== */
+
+.trade-form__time-inner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.trade-form__time-inner input[type="number"] {
+  width: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+
+.trade-form__time-inner input[type="number"]::-webkit-outer-spin-button,
+.trade-form__time-inner input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.trade-form__colon {
+  color: var(--muted, #888);
+  font-weight: 600;
+  padding: 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-form__now {
+  margin-left: 4px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border, #232c38);
+  background: transparent;
+  color: var(--muted, #888);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.trade-form__now:hover {
+  color: var(--accent, #2dd4bf);
+  border-color: var(--accent, #2dd4bf);
+  background: var(--accent-soft, rgba(45, 212, 191, 0.12));
+}
+
+/* ========== Journal: Opened-at (date + time) ========== */
+
+.trade-form__time-inner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.trade-form__date {
+  width: 140px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-form__time-inner input[type="number"] {
+  width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+
+.trade-form__time-inner input[type="number"]::-webkit-outer-spin-button,
+.trade-form__time-inner input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.trade-form__colon {
+  color: var(--muted, #888);
+  font-weight: 600;
+  padding: 0 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-form__now {
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border, #232c38);
+  background: transparent;
+  color: var(--muted, #888);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.trade-form__now:hover {
+  color: var(--accent, #2dd4bf);
+  border-color: var(--accent, #2dd4bf);
+  background: var(--accent-soft, rgba(45, 212, 191, 0.12));
+}
