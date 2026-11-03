@@ -4,6 +4,9 @@ import {
   fmtMoney,
   fmtPct,
   timeAgo,
+  stateLabel,
+  stateIcon,
+  stateTone,
 } from "../../lib/equityApi";
 
 interface Props {
@@ -201,6 +204,11 @@ export function AccountStatusCard({
           )}
         </>
       )}
-    </section>
+    
+      <div className={`ee-state-badge ee-state-badge--${stateTone((status.snapshot as any)?.state_enum || status.label.toLowerCase())}`}>
+        <span className="ee-state-badge__icon">{stateIcon((status.snapshot as any)?.state_enum || "")}</span>
+        <span className="ee-state-badge__label">{stateLabel((status.snapshot as any)?.state_enum || "")}</span>
+      </div>
+</section>
   );
 }

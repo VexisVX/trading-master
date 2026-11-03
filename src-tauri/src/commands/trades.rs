@@ -7,19 +7,34 @@ use tauri::State;
 
 #[tauri::command]
 pub fn trades_create(state: State<AppState>, trade: NewTrade) -> Result<i64, String> {
-    let id = {
+    // Phase 1: create the trade with an explicit scoped lock
+    let (id, account_id) = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        repo::create_trade(&conn, &trade).map_err(|e| e.to_string())?
+        let id = repo::create_trade(&conn, &trade).map_err(|e| e.to_string())?;
+        let acc = trade.account_id;
+        (id, acc)
+        // conn is dropped HERE, before returning
     };
-    // Auto-snapshot: update equity state (ignore errors — trade already saved)
-    let _ = super::equity::equity_auto_snapshot_create(state, Some(trade.account_id));
+    // Now the lock is GUARANTEED to be released (Rust drops conn at end of block)
+    // before the next lock acquisition inside auto_snapshot.
+
+    // Phase 2: auto-snapshot DISABLED (investigating crash)
+    // if let Err(e) = super::equity::equity_auto_snapshot_create(state, Some(account_id)) {
+    //     eprintln!("[trades_create] auto-snapshot non-fatal: {}", e);
+    // }
+
     Ok(id)
 }
 
 #[tauri::command]
-pub fn trades_list(state: State<AppState>, limit: i64, offset: i64) -> Result<Vec<Trade>, String> {
+pub fn trades_list(
+    state: State<AppState>,
+    account_id: Option<i64>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Trade>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    repo::list_trades(&conn, limit, offset).map_err(|e| e.to_string())
+    repo::list_trades(&conn, account_id, limit, offset).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -80,7 +95,7 @@ pub fn trades_default_account_id(state: State<AppState>) -> Result<i64, String> 
 #[tauri::command]
 pub fn trades_export_csv(state: State<AppState>, dest: String) -> Result<u64, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let trades = repo::list_trades(&conn, 10000, 0).map_err(|e| e.to_string())?;
+    let trades = repo::list_trades(&conn, None, 10000, 0).map_err(|e| e.to_string())?;
     crate::db::csv_export::export_trades_csv(&trades, std::path::Path::new(&dest))
         .map_err(|e| e.to_string())
 }
@@ -308,7 +323,7 @@ pub fn trades_quick_create(
 
     let _id = trade_id;
     drop(conn); // release lock before auto-snapshot
-    let _ = super::equity::equity_auto_snapshot_create(state, None);
+//     let _ = super::equity::equity_auto_snapshot_create(...); // DISABLED
     Ok(_id)
 }
 

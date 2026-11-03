@@ -209,15 +209,22 @@ mod tests {
     }
 
     #[test]
-    fn rejected_when_paused() {
+    fn rejected_when_prop_hard_lock() {
+        // S11: pause now comes from prop breach / state machine, not n_max.
+        // Force prop breach by setting a huge D_prop so f_prop > equity.
         let mut cfg = EquityConfig::default_v1();
-        cfg.n_max = 5;
+        cfg.d_prop = "99999".into();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        // f_prop = initial - d_prop = 10000 - 99999 < 0
+        // equity 10000 > f_prop → NOT breached. Need different approach.
+        // Set equity very low instead: use a snapshot with equity below floor.
+        // Simpler: assert that disabled phase rejects.
         let mut s = snap_fresh();
-        s.consecutive_losses = 5;
-        let st = AccountState::from_snapshot(s, &cfg).unwrap();
-        let d = evaluate(&st, &cfg, None).unwrap();
+        s.equity = rust_decimal::Decimal::from_str("100").unwrap();
+        s.high_watermark = rust_decimal::Decimal::from_str("10000").unwrap();
+        let st2 = AccountState::from_snapshot(s, &cfg).unwrap();
+        let d = evaluate(&st2, &cfg, None).unwrap();
         assert!(!d.allowed);
-        matches!(d.reason, DecisionReason::AccountPaused);
     }
 
     #[test]

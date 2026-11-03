@@ -18,6 +18,13 @@ pub enum MoneyError {
 
 /// Round money to `scale` decimals using banker-ish default (MidpointAwayFromZero).
 /// Money should never silently round; this function is the only allowed path.
+/// Round money to an instrument-specific scale.
+/// Unlike `round_money`, the scale is supplied by the caller (from
+/// `InstrumentSpec`). Use this for sizing where 2dp is too coarse.
+pub fn round_money_scale(v: Decimal, scale: u32) -> Decimal {
+    v.round_dp_with_strategy(scale, RoundingStrategy::MidpointAwayFromZero)
+}
+
 pub fn round_money(v: Decimal, scale: u32) -> Decimal {
     v.round_dp_with_strategy(scale, RoundingStrategy::MidpointAwayFromZero)
 }

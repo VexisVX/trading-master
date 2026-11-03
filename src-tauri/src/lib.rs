@@ -2,7 +2,7 @@ mod analytics;
 mod commands;
 mod db;
 mod domain;
-mod equity;
+pub mod equity;
 mod risk;
 mod utils;
 
@@ -79,6 +79,9 @@ pub fn run() {
             commands::trades::trades_delete,
             commands::trades::trades_update,
             commands::analytics::analytics_summary,
+            commands::analytics::analytics_period_pnl,
+            commands::goals::goals_get,
+            commands::goals::goals_set,
             commands::analytics::analytics_recent_r,
             commands::analytics::analytics_breakdown,
             commands::backup::backup_to_file,
@@ -97,8 +100,7 @@ pub fn run() {
             commands::news::fmp_calendar_fetch,
             commands::news::finnhub_news,
             commands::settings::settings_delete,
-            commands::goals::goals_update,
-            commands::goals::goals_get,
+
             commands::storage::storage_stats,
             commands::settings::settings_set,
             commands::settings::settings_get,
@@ -115,6 +117,10 @@ pub fn run() {
             commands::accounts::accounts_delete,
             commands::accounts::accounts_active_get,
             commands::accounts::accounts_active_set,
+            commands::accounts::accounts_trades_count,
+            commands::accounts::accounts_update,
+            commands::accounts::accounts_reset,
+            commands::accounts::accounts_backup_json,
             commands::strategies::strategies_create,
             commands::strategies::strategies_list,
             commands::strategies::strategies_get,

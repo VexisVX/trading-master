@@ -47,20 +47,26 @@ pub struct DecisionOut {
     pub r_allowed: String,
     pub size: Option<String>,
     pub rr: Option<String>,
+    // ---- legacy (S8; UI still reads these) ----
     pub phase: String,
     pub dd_pct: String,
     pub f_hybrid: String,
     pub loss_capacity: String,
+    // ---- new (S8) ----
+    pub state: String,
+    pub state_enum: String,
+    pub buffer_r: String,
+    pub m_preserve: String,
+    pub f_internal: String,
+    pub f_prop: String,
     pub snapshot_id: Option<i64>,
-    /// Full risk breakdown for "Why this size?" — optional so existing
-    /// clients that don't care about it can ignore it.
     pub risk_detail: Option<RiskDetail>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RiskDetail {
-    // All money values as Decimal-string; multipliers as decimal-string.
     pub equity: String,
+    // legacy (S8)
     pub r_base: String,
     pub m_dd: String,
     pub m_loss: String,
@@ -73,6 +79,12 @@ pub struct RiskDetail {
     pub entry_minus_stop: String,
     pub contract_multiplier: String,
     pub per_unit_cost: String,
+    // new (S8)
+    pub buffer_r: String,
+    pub m_preserve: String,
+    pub f_internal: String,
+    pub f_prop: String,
+    pub binding_constraint: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -172,7 +184,7 @@ pub fn equity_snapshot_create(
 
     // High watermark = max(previous HWM, current equity, initial_balance).
     // If no previous snapshot exists, use max(equity, initial_balance).
-    let prev = repo::latest_snapshot(&conn).map_err(|e| e.to_string())?;
+    let prev = repo::latest_snapshot(&conn, None).map_err(|e| e.to_string())?;
     let hwm = match &prev {
         Some(p) => {
             let prev_hwm = parse_dec(&p.high_watermark, "prev_hwm")?;
@@ -206,6 +218,7 @@ pub fn equity_snapshot_create(
     let lc_s = acct_state.loss_capacity.to_string();
 
     let row = repo::SnapshotRow {
+        account_id: None,
         equity: &equity.to_string(),
         initial_balance: &initial.to_string(),
         high_watermark: &hwm,
@@ -215,6 +228,11 @@ pub fn equity_snapshot_create(
         daily_loss: &input.daily_loss,
         consecutive_losses: input.consecutive_losses,
         taken_at: &taken_at,
+        state: None,
+        buffer_r: None,
+        m_preserve: None,
+        f_internal: None,
+        f_prop_val: None,
         phase: Some(&phase_s),
         protected_profit: Some(&prot_s),
         equity_floor: Some(&floor_s),
@@ -228,20 +246,22 @@ pub fn equity_snapshot_create(
 #[tauri::command]
 pub fn equity_snapshot_latest(
     state: State<'_, AppState>,
+    account_id: Option<i64>,
 ) -> Result<Option<repo::EquitySnapshotRow>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    repo::latest_snapshot(&conn).map_err(|e| e.to_string())
+    repo::latest_snapshot(&conn, account_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn equity_evaluate(
     state: State<'_, AppState>,
+    account_id: Option<i64>,
     proposal: Option<ProposalInput>,
 ) -> Result<DecisionOut, String> {
     // 1. Load config + latest snapshot
     let cfg = load_or_default_config(&state)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let snap_row = repo::latest_snapshot(&conn).map_err(|e| e.to_string())?
+    let snap_row = repo::latest_snapshot(&conn, account_id).map_err(|e| e.to_string())?
         .ok_or_else(|| "no snapshot yet — create one first".to_string())?;
 
     let snap_domain = EquitySnapshot {
@@ -321,6 +341,7 @@ pub fn equity_evaluate(
     let _ = m_dd(&state_acct, &cfg);
     let _ = m_loss(0, &cfg);
 
+    let state_s = state_acct.state_enum.as_str().to_string();
     Ok(DecisionOut {
         allowed: decision.allowed,
         reason: decision.reason,
@@ -331,6 +352,12 @@ pub fn equity_evaluate(
         dd_pct: state_acct.dd_pct.to_string(),
         f_hybrid: state_acct.f_hybrid.to_string(),
         loss_capacity: state_acct.loss_capacity.to_string(),
+        state: state_s.clone(),
+        state_enum: state_s,
+        buffer_r: state_acct.buffer_r.to_string(),
+        m_preserve: state_acct.m_preserve.to_string(),
+        f_internal: state_acct.f_internal.to_string(),
+        f_prop: state_acct.f_prop.to_string(),
         snapshot_id: Some(snap_row.id),
         risk_detail: decision.risk_detail.as_ref().map(|r| {
             // Compute entry_minus_stop and per_unit_cost from proposal
@@ -361,6 +388,11 @@ pub fn equity_evaluate(
                 entry_minus_stop: ems.to_string(),
                 contract_multiplier: mult.to_string(),
                 per_unit_cost: per_unit.to_string(),
+                buffer_r: state_acct.buffer_r.to_string(),
+                m_preserve: state_acct.m_preserve.to_string(),
+                f_internal: state_acct.f_internal.to_string(),
+                f_prop: state_acct.f_prop.to_string(),
+                binding_constraint: r.binding.to_string(),
             }
         }),
     })
@@ -413,10 +445,25 @@ pub fn equity_auto_snapshot_create(
     state: State<'_, AppState>,
     account_id: Option<i64>,
 ) -> Result<i64, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    use rust_decimal::prelude::FromStr;
+    use rust_decimal::Decimal;
 
-    // 1) account: use given account_id, or first active
-    let (account_id, initial): (i64, Decimal) = match account_id {
+    eprintln!("[AUTO_SNAPSHOT] START account_id={:?}", account_id);
+
+    // ★ CRITICAL: Load config BEFORE acquiring the db lock.
+    // load_or_default_config itself takes state.db.lock() — if we hold
+    // the lock and then call it, we deadlock (and panic).
+    let cfg = load_or_default_config(&state)
+        .unwrap_or_else(|_| crate::equity::config::EquityConfig::default_v1());
+    eprintln!("[AUTO_SNAPSHOT] config preloaded");
+
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    eprintln!("[AUTO_SNAPSHOT] db lock acquired");
+
+    // ============================================================
+    // 1. Get account
+    // ============================================================
+    let (acc_id, initial): (i64, Decimal) = match account_id {
         Some(aid) => conn
             .query_row(
                 "SELECT id, initial_balance FROM accounts WHERE id = ?1",
@@ -424,7 +471,11 @@ pub fn equity_auto_snapshot_create(
                 |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
             )
             .map_err(|e| format!("account {} not found: {}", aid, e))
-            .and_then(|(id, ib)| Ok((id, parse_dec(&ib, "initial_balance")?)))?,
+            .and_then(|(id, ib)| {
+                Decimal::from_str(&ib)
+                    .map(|d| (id, d))
+                    .map_err(|e| format!("initial_balance: {}", e))
+            })?,
         None => conn
             .query_row(
                 "SELECT id, initial_balance FROM accounts WHERE is_active = 1 ORDER BY id LIMIT 1",
@@ -432,172 +483,188 @@ pub fn equity_auto_snapshot_create(
                 |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
             )
             .map_err(|e| format!("no active account: {}", e))
-            .and_then(|(id, ib)| Ok((id, parse_dec(&ib, "initial_balance")?)))?,
+            .and_then(|(id, ib)| {
+                Decimal::from_str(&ib)
+                    .map(|d| (id, d))
+                    .map_err(|e| format!("initial_balance: {}", e))
+            })?,
     };
+    eprintln!("[AUTO_SNAPSHOT] account_id={} initial={}", acc_id, initial);
 
-    // 2) sum of closed-trade PnL (manual_pnl takes precedence; otherwise null)
-    let mut stmt = conn
-        .prepare(
-            "SELECT manual_pnl FROM trades
-             WHERE account_id = ?1 AND status = 'closed'",
-        )
-        .map_err(|e| e.to_string())?;
-    let pnls = stmt
-        .query_map([account_id], |r| r.get::<_, Option<String>>(0))
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
+    // ============================================================
+    // 2. Equity from closed trades
+    // ============================================================
     let mut total_pnl = Decimal::ZERO;
-    for p in pnls.iter().flatten() {
-        if let Ok(d) = Decimal::from_str(p) {
-            total_pnl += d;
-        }
-    }
-    let equity = initial + total_pnl;
-
-    // 3) HWM: max(prev HWM, equity, initial)
-    let prev = repo::latest_snapshot(&conn).map_err(|e| e.to_string())?;
-    let hwm = match &prev {
-        Some(p) => {
-            let prev_hwm = parse_dec(&p.high_watermark, "prev_hwm")?;
-            prev_hwm.max(equity).max(initial)
-        }
-        None => equity.max(initial),
-    };
-
-    // 4) LWM: min(prev LWM, equity). If first snapshot, = min(equity, initial)
-    let lwm = match &prev {
-        Some(p) => {
-            let prev_lwm = parse_dec(&p.low_watermark, "prev_lwm")?;
-            prev_lwm.min(equity)
-        }
-        None => equity.min(initial),
-    };
-
-    // 5) consecutive_losses: walk closed trades newest-first,
-    //    count leading negatives in pnl until first non-negative.
-    let mut stmt2 = conn
-        .prepare(
-            "SELECT manual_pnl FROM trades
-             WHERE account_id = ?1 AND status = 'closed'
-             ORDER BY COALESCE(closed_at, updated_at) DESC",
-        )
-        .map_err(|e| e.to_string())?;
-    let ordered = stmt2
-        .query_map([account_id], |r| r.get::<_, Option<String>>(0))
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    let mut streak: i64 = 0;
-    for p in ordered.iter().flatten() {
-        match Decimal::from_str(p) {
-            Ok(d) if d < Decimal::ZERO => streak += 1,
-            Ok(_) => break,
-            Err(_) => break,
-        }
-    }
-
-    // 6) daily_loss: sum of negative manual_pnl on closed trades
-    //    whose closed_at date (UTC) == today.
-    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let mut stmt3 = conn
-        .prepare(
-            "SELECT manual_pnl FROM trades
-             WHERE account_id = ?1
-               AND status = 'closed'
-               AND substr(COALESCE(closed_at, updated_at), 1, 10) = ?2",
-        )
-        .map_err(|e| e.to_string())?;
-    let today_pnls = stmt3
-        .query_map(rusqlite::params![account_id, today], |r| {
-            r.get::<_, Option<String>>(0)
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    let mut daily_loss = Decimal::ZERO;
-    for p in today_pnls.iter().flatten() {
-        if let Ok(d) = Decimal::from_str(p) {
-            if d < Decimal::ZERO {
-                daily_loss += d.abs();
+    {
+        let mut stmt = conn
+            .prepare("SELECT manual_pnl FROM trades WHERE account_id = ?1 AND status = 'closed'")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([acc_id], |r| r.get::<_, Option<String>>(0))
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            if let Ok(Some(s)) = row {
+                if let Ok(d) = Decimal::from_str(&s) {
+                    total_pnl += d;
+                }
             }
         }
     }
+    let equity = initial + total_pnl;
+    eprintln!("[AUTO_SNAPSHOT] equity = {}", equity);
 
-    // 7) open_portfolio_risk: sum over open trades of
-    //    |entry - initial_stop| * total_quantity
-    let mut stmt4 = conn
-        .prepare(
-            "SELECT entry_price, initial_stop, total_quantity FROM trades
-             WHERE account_id = ?1 AND status = 'open'",
-        )
-        .map_err(|e| e.to_string())?;
-    let opens = stmt4
-        .query_map([account_id], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-            ))
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+    // ============================================================
+    // 3. HWM / LWM
+    // ============================================================
+    let prev = repo::latest_snapshot(&conn, Some(acc_id)).map_err(|e| e.to_string())?;
+    let (hwm, lwm) = match &prev {
+        Some(p) => {
+            let prev_hwm = Decimal::from_str(&p.high_watermark).unwrap_or(initial);
+            let prev_lwm = Decimal::from_str(&p.low_watermark).unwrap_or(initial);
+            (prev_hwm.max(equity).max(initial), prev_lwm.min(equity).min(initial))
+        }
+        None => (equity.max(initial), equity.min(initial)),
+    };
+    eprintln!("[AUTO_SNAPSHOT] hwm={} lwm={}", hwm, lwm);
 
-    let mut open_risk = Decimal::ZERO;
-    for (ep, sl, qty) in opens {
-        let e = parse_dec(&ep, "entry")?;
-        let s = parse_dec(&sl, "stop")?;
-        let q = parse_dec(&qty, "qty")?;
-        let per_unit = (e - s).abs();
-        open_risk += per_unit * q;
+    // ============================================================
+    // 4. Streak
+    // ============================================================
+    let mut streak: i64 = 0;
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT manual_pnl FROM trades WHERE account_id = ?1 AND status = 'closed'
+                 ORDER BY COALESCE(closed_at, updated_at) DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([acc_id], |r| r.get::<_, Option<String>>(0))
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            match row {
+                Ok(Some(s)) => match Decimal::from_str(&s) {
+                    Ok(d) if d < Decimal::ZERO => streak += 1,
+                    _ => break,
+                },
+                _ => break,
+            }
+        }
     }
+    eprintln!("[AUTO_SNAPSHOT] streak = {}", streak);
 
-    // 8) day_start_equity: if we have a snapshot from a previous UTC day
-    //    use its equity as the day-start; otherwise use current equity.
+    // ============================================================
+    // 5. Daily loss
+    // ============================================================
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let mut daily_loss = Decimal::ZERO;
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT manual_pnl FROM trades WHERE account_id = ?1 AND status = 'closed'
+                 AND substr(COALESCE(closed_at, updated_at), 1, 10) = ?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![acc_id, today], |r| r.get::<_, Option<String>>(0))
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            if let Ok(Some(s)) = row {
+                if let Ok(d) = Decimal::from_str(&s) {
+                    if d < Decimal::ZERO {
+                        daily_loss += d.abs();
+                    }
+                }
+            }
+        }
+    }
+    eprintln!("[AUTO_SNAPSHOT] daily_loss = {}", daily_loss);
+
+    // ============================================================
+    // 6. Open risk
+    // ============================================================
+    let mut open_risk = Decimal::ZERO;
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT entry_price, initial_stop, total_quantity FROM trades
+                 WHERE account_id = ?1 AND status = 'open'",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([acc_id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            if let Ok((ep, sl, qty)) = row {
+                let e = Decimal::from_str(&ep).unwrap_or(Decimal::ZERO);
+                let s = Decimal::from_str(&sl).unwrap_or(Decimal::ZERO);
+                let q = Decimal::from_str(&qty).unwrap_or(Decimal::ZERO);
+                open_risk += (e - s).abs() * q;
+            }
+        }
+    }
+    eprintln!("[AUTO_SNAPSHOT] open_risk = {}", open_risk);
+
+    // ============================================================
+    // 7. Day start
+    // ============================================================
     let day_start = match &prev {
         Some(p) => {
-            let prev_taken = p.taken_at.get(..10).unwrap_or("");
-            if prev_taken == today {
-                // same day: reuse previous day_start
-                parse_dec(&p.day_start_equity, "prev_day_start")?
+            let prev_day = p.taken_at.chars().take(10).collect::<String>();
+            if prev_day == today {
+                Decimal::from_str(&p.day_start_equity).unwrap_or(equity)
             } else {
-                // new day: today's start = current equity
                 equity
             }
         }
         None => equity,
     };
+    eprintln!("[AUTO_SNAPSHOT] day_start = {}", day_start);
 
-    // 9) insert snapshot
-    let taken_at = chrono::Utc::now().to_rfc3339();
-        // 9b) Compute AccountState for phase/protected/floor/LC
-    let cfg = load_or_default_config(&state)?;
-    let snap_domain = EquitySnapshot {
+    // ============================================================
+    // 8. Compute floor / protected / LC / phase — manual
+    // ============================================================
+    // S10: Use AccountState::from_snapshot instead of manual formulas.
+    let parsed_for_state = crate::equity::state::ParsedSnapshot {
         id: 0,
-        equity: equity.to_string(),
-        initial_balance: initial.to_string(),
-        high_watermark: hwm.to_string(),
-        low_watermark: lwm.to_string(),
-        day_start_equity: day_start.to_string(),
-        open_portfolio_risk: open_risk.to_string(),
-        daily_loss: daily_loss.to_string(),
+        equity,
+        initial_balance: initial,
+        high_watermark: hwm,
+        low_watermark: lwm,
+        day_start_equity: day_start,
+        open_portfolio_risk: open_risk,
+        daily_loss,
         consecutive_losses: streak,
-        taken_at: taken_at.clone(),
+        taken_at: chrono::Utc::now(),
     };
-    let parsed = snap_domain.parse().map_err(|e: String| format!("snapshot parse: {e}"))?;
-    let acct_state = AccountState::from_snapshot(parsed, &cfg)
-        .map_err(|e| format!("AccountState: {e}"))?;
+    let acct_state = crate::equity::state::AccountState::from_snapshot(parsed_for_state, &cfg)
+        .map_err(|e| format!("AccountState: {}", e))?;
 
-    let phase_s = phase_str(acct_state.phase).to_string();
-    let prot_s = acct_state.profit_retention.to_string();
-    let floor_s = acct_state.f_hybrid.to_string();
-    let lc_s = acct_state.loss_capacity.to_string();
+    let protected_profit = acct_state.profit_retention;
+    let f_hybrid = acct_state.f_hybrid;
+    let loss_capacity = acct_state.loss_capacity;
+    let f_internal = acct_state.f_internal;
+    let f_prop_val = acct_state.f_prop;
+    let buffer_r = acct_state.buffer_r;
+    let m_preserve = acct_state.m_preserve;
+    let state_enum_s = acct_state.state_enum.as_str().to_string();
+    let phase_str_manual = phase_str(acct_state.phase);
+    let dd_pct = acct_state.dd_pct;
 
+    eprintln!(
+        "[AUTO_SNAPSHOT] protected={} floor={} lc={} dd={} phase={} state={} buffer_r={} m_preserve={}",
+        protected_profit, f_hybrid, loss_capacity, dd_pct, phase_str_manual, state_enum_s, buffer_r, m_preserve
+    );
+
+    let taken_at = chrono::Utc::now().to_rfc3339();
     let row = repo::SnapshotRow {
+        account_id: Some(acc_id),
         equity: &equity.to_string(),
         initial_balance: &initial.to_string(),
         high_watermark: &hwm.to_string(),
@@ -607,12 +674,19 @@ pub fn equity_auto_snapshot_create(
         daily_loss: &daily_loss.to_string(),
         consecutive_losses: streak,
         taken_at: &taken_at,
-        phase: Some(&phase_s),
-        protected_profit: Some(&prot_s),
-        equity_floor: Some(&floor_s),
-        loss_capacity: Some(&lc_s),
+        phase: Some(phase_str_manual),
+        protected_profit: Some(&protected_profit.to_string()),
+        equity_floor: Some(&f_hybrid.to_string()),
+        loss_capacity: Some(&loss_capacity.to_string()),
+        state: Some(&state_enum_s),
+        buffer_r: Some(&buffer_r.to_string()),
+        m_preserve: Some(&m_preserve.to_string()),
+        f_internal: Some(&f_internal.to_string()),
+        f_prop_val: Some(&f_prop_val.to_string()),
     };
+
     let id = repo::insert_snapshot(&conn, &row).map_err(|e| e.to_string())?;
+    eprintln!("[AUTO_SNAPSHOT] inserted id={}", id);
     Ok(id)
 }
 
@@ -635,6 +709,7 @@ pub struct PreEvalResult {
 #[tauri::command]
 pub fn equity_pre_evaluate(
     state: State<'_, AppState>,
+    account_id: Option<i64>,
     entry: String,
     stop: String,
     take_profit: Option<String>,
@@ -655,7 +730,7 @@ pub fn equity_pre_evaluate(
         slippage_buffer: "0".into(),
     };
 
-    let decision = match equity_evaluate(state, Some(proposal)) {
+    let decision = match equity_evaluate(state, account_id, Some(proposal)) {
         Ok(d) => d,
         Err(e) => {
             return Ok(PreEvalResult {
@@ -785,42 +860,78 @@ pub fn equity_list_accounts(
 #[tauri::command]
 pub fn equity_list_snapshots(
     state: State<'_, AppState>,
+    account_id: Option<i64>,
     limit: i64,
 ) -> Result<Vec<repo::EquitySnapshotRow>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, equity, initial_balance, high_watermark, low_watermark,
-                    day_start_equity, open_portfolio_risk, daily_loss,
-                    consecutive_losses, taken_at,
-                    phase, protected_profit, equity_floor, loss_capacity
-             FROM equity_snapshots
-             ORDER BY taken_at DESC
-             LIMIT ?1",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([limit], |r| {
-            Ok(repo::EquitySnapshotRow {
-                id: r.get(0)?,
-                equity: r.get(1)?,
-                initial_balance: r.get(2)?,
-                high_watermark: r.get(3)?,
-                low_watermark: r.get(4)?,
-                day_start_equity: r.get(5)?,
-                open_portfolio_risk: r.get(6)?,
-                daily_loss: r.get(7)?,
-                consecutive_losses: r.get(8)?,
-                taken_at: r.get(9)?,
-                phase: r.get(10).ok(),
-                protected_profit: r.get(11).ok(),
-                equity_floor: r.get(12).ok(),
-                loss_capacity: r.get(13).ok(),
-            })
+    let _ = repo::ensure_snapshot_detail_columns(&conn);
+    let _ = repo::ensure_snapshot_account_id(&conn);
+
+    let map_row = |r: &rusqlite::Row| -> rusqlite::Result<repo::EquitySnapshotRow> {
+        Ok(repo::EquitySnapshotRow {
+            id: r.get(0)?,
+            equity: r.get(1)?,
+            initial_balance: r.get(2)?,
+            high_watermark: r.get(3)?,
+            low_watermark: r.get(4)?,
+            day_start_equity: r.get(5)?,
+            open_portfolio_risk: r.get(6)?,
+            daily_loss: r.get(7)?,
+            consecutive_losses: r.get(8)?,
+            taken_at: r.get(9)?,
+            phase: r.get(10).ok(),
+            protected_profit: r.get(11).ok(),
+            equity_floor: r.get(12).ok(),
+            loss_capacity: r.get(13).ok(),
+            state: None,
+            buffer_r: None,
+            m_preserve: None,
+            f_internal: None,
+            f_prop_val: None,
         })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+    };
+
+    let mut rows: Vec<repo::EquitySnapshotRow> = Vec::new();
+
+    if let Some(aid) = account_id {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, equity, initial_balance, high_watermark, low_watermark,
+                        day_start_equity, open_portfolio_risk, daily_loss,
+                        consecutive_losses, taken_at,
+                        phase, protected_profit, equity_floor, loss_capacity
+                 FROM equity_snapshots
+                 WHERE account_id = ?1
+                 ORDER BY taken_at DESC
+                 LIMIT ?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut query = stmt
+            .query(rusqlite::params![aid, limit])
+            .map_err(|e| e.to_string())?;
+        while let Some(r) = query.next().map_err(|e| e.to_string())? {
+            rows.push(map_row(r).map_err(|e| e.to_string())?);
+        }
+    } else {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, equity, initial_balance, high_watermark, low_watermark,
+                        day_start_equity, open_portfolio_risk, daily_loss,
+                        consecutive_losses, taken_at,
+                        phase, protected_profit, equity_floor, loss_capacity
+                 FROM equity_snapshots
+                 ORDER BY taken_at DESC
+                 LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut query = stmt
+            .query(rusqlite::params![limit])
+            .map_err(|e| e.to_string())?;
+        while let Some(r) = query.next().map_err(|e| e.to_string())? {
+            rows.push(map_row(r).map_err(|e| e.to_string())?);
+        }
+    }
+
     Ok(rows)
 }
 
@@ -885,7 +996,6 @@ pub fn equity_cleanup_old_snapshots(
 
 #[derive(Debug, Serialize)]
 pub struct RiskPreview {
-    // Account state
     pub equity: String,
     pub initial_balance: String,
     pub high_watermark: String,
@@ -898,6 +1008,12 @@ pub struct RiskPreview {
     pub f_trail: String,
     pub f_prop: String,
     pub f_hybrid: String,
+    // ---- new (S8) ----
+    pub state: String,
+    pub state_enum: String,
+    pub buffer_r: String,
+    pub m_preserve: String,
+    pub f_internal: String,
 
     // Risk breakdown
     pub r_base: String,
@@ -940,12 +1056,13 @@ pub struct RiskPreview {
 #[tauri::command]
 pub fn equity_preview_risk(
     state: State<'_, AppState>,
+    account_id: Option<i64>,
 ) -> Result<RiskPreview, String> {
     use crate::equity::risk_engine::compute_risk;
 
     let cfg = load_or_default_config(&state)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let snap_row = repo::latest_snapshot(&conn).map_err(|e| e.to_string())?
+    let snap_row = repo::latest_snapshot(&conn, account_id).map_err(|e| e.to_string())?
         .ok_or_else(|| "no snapshot yet — click Refresh".to_string())?;
     drop(conn);
 
@@ -987,6 +1104,7 @@ pub fn equity_preview_risk(
         binding = "Prop";
     }
 
+    let rp_state = acct_state.state_enum.as_str().to_string();
     Ok(RiskPreview {
         equity: acct_state.snapshot.equity.to_string(),
         initial_balance: acct_state.snapshot.initial_balance.to_string(),
@@ -1000,6 +1118,11 @@ pub fn equity_preview_risk(
         f_trail: acct_state.f_trail.to_string(),
         f_prop: acct_state.f_prop.to_string(),
         f_hybrid: acct_state.f_hybrid.to_string(),
+        state: rp_state.clone(),
+        state_enum: rp_state,
+        buffer_r: acct_state.buffer_r.to_string(),
+        m_preserve: acct_state.m_preserve.to_string(),
+        f_internal: acct_state.f_internal.to_string(),
 
         r_base: risk.r_base.to_string(),
         m_dd: risk.m_dd.to_string(),

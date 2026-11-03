@@ -185,15 +185,36 @@ fn load_attachments(conn: &Connection, trade_id: i64) -> Result<Vec<Attachment>,
     Ok(out)
 }
 
-pub fn list_trades(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<Trade>, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT id FROM trades ORDER BY opened_at DESC, id DESC LIMIT ?1 OFFSET ?2",
-    )?;
-    let ids: Vec<i64> = stmt.query_map(params![limit, offset], |r| r.get(0))?
-        .collect::<Result<_, _>>()?;
+pub fn list_trades(
+    conn: &Connection,
+    account_id: Option<i64>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Trade>, DbError> {
+    let ids: Vec<i64> = if let Some(aid) = account_id {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM trades WHERE account_id = ?1
+             ORDER BY opened_at DESC, id DESC LIMIT ?2 OFFSET ?3",
+        )?;
+        let result: Result<Vec<i64>, _> = stmt
+            .query_map(params![aid, limit, offset], |r| r.get(0))?
+            .collect();
+        result?
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM trades ORDER BY opened_at DESC, id DESC LIMIT ?1 OFFSET ?2",
+        )?;
+        let result: Result<Vec<i64>, _> = stmt
+            .query_map(params![limit, offset], |r| r.get(0))?
+            .collect();
+        result?
+    };
+
     let mut out = Vec::with_capacity(ids.len());
     for id in ids {
-        if let Some(t) = get_trade(conn, id)? { out.push(t); }
+        if let Some(t) = get_trade(conn, id)? {
+            out.push(t);
+        }
     }
     Ok(out)
 }
@@ -337,6 +358,7 @@ mod tests {
                total_quantity TEXT, outcome TEXT DEFAULT 'open',
                size_type TEXT DEFAULT 'lots', size_value TEXT, size_unit TEXT,
                manual_pnl TEXT,
+               original_quantity TEXT,
                status TEXT, strategy_id INTEGER,
                opened_at TEXT, closed_at TEXT, notes TEXT,
                chart_url TEXT, screenshot_path TEXT,

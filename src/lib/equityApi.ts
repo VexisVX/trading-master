@@ -15,7 +15,17 @@ export interface EquitySnapshotRow {
   open_portfolio_risk: string;
   daily_loss: string;
   consecutive_losses: number;
-  created_at: string;
+  created_at?: string;
+  phase?: string | null;
+  protected_profit?: string | null;
+  equity_floor?: string | null;
+  loss_capacity?: string | null;
+  // S10: new columns (nullable for legacy rows)
+  state?: string | null;
+  buffer_r?: string | null;
+  m_preserve?: string | null;
+  f_internal?: string | null;
+  f_prop_val?: string | null;
 }
 
 export interface SnapshotCreateInput {
@@ -58,6 +68,12 @@ export interface RiskDetail {
   entry_minus_stop: string;
   contract_multiplier: string;
   per_unit_cost: string;
+  // new (S8)
+  buffer_r: string;
+  m_preserve: string;
+  f_internal: string;
+  f_prop: string;
+  binding_constraint: string;
 }
 
 export interface DecisionOut {
@@ -66,10 +82,18 @@ export interface DecisionOut {
   r_allowed: string;
   size: string | null;
   rr: string | null;
+  // legacy
   phase: string;
   dd_pct: string;
   f_hybrid: string;
   loss_capacity: string;
+  // new (S8)
+  state: string;
+  state_enum: string;
+  buffer_r: string;
+  m_preserve: string;
+  f_internal: string;
+  f_prop: string;
   snapshot_id: number | null;
   risk_detail: RiskDetail | null;
 }
@@ -180,6 +204,12 @@ export interface RiskPreview {
   f_trail: string;
   f_prop: string;
   f_hybrid: string;
+  // new (S8)
+  state: string;
+  state_enum: string;
+  buffer_r: string;
+  m_preserve: string;
+  f_internal: string;
 
   r_base: string;
   m_dd: string;
@@ -242,8 +272,12 @@ export interface AccountStatus {
  *  API FUNCTIONS — match Rust command names exactly
  * ============================================================ */
 
-export async function getLatestSnapshot(): Promise<EquitySnapshotRow | null> {
-  return invoke<EquitySnapshotRow | null>("equity_snapshot_latest");
+export async function getLatestSnapshot(
+  accountId?: number
+): Promise<EquitySnapshotRow | null> {
+  return invoke<EquitySnapshotRow | null>("equity_snapshot_latest", {
+    accountId: accountId ?? null,
+  });
 }
 
 export async function createSnapshot(
@@ -265,9 +299,13 @@ export async function listDecisions(limit: number): Promise<DecisionRowOut[]> {
 }
 
 export async function evaluateTrade(
+  accountId: number | undefined,
   proposal: TradeProposal | null
 ): Promise<DecisionOut> {
-  return invoke<DecisionOut>("equity_evaluate", { proposal });
+  return invoke<DecisionOut>("equity_evaluate", {
+    accountId: accountId ?? null,
+    proposal,
+  });
 }
 
 
@@ -275,14 +313,18 @@ export async function evaluateTrade(
  * Pre-check a proposed trade WITHOUT saving it.
  * Returns verdict: ok | warn | block | reject.
  */
-export async function preEvaluateTrade(input: {
-  entry: string;
-  stop: string;
-  take_profit: string | null;
-  contract_multiplier: string;
-  size: string;
-}): Promise<PreEvalResult> {
+export async function preEvaluateTrade(
+  accountId: number | undefined,
+  input: {
+    entry: string;
+    stop: string;
+    take_profit: string | null;
+    contract_multiplier: string;
+    size: string;
+  }
+): Promise<PreEvalResult> {
   return invoke<PreEvalResult>("equity_pre_evaluate", {
+    accountId: accountId ?? null,
     entry: input.entry,
     stop: input.stop,
     takeProfit: input.take_profit,
@@ -292,8 +334,12 @@ export async function preEvaluateTrade(input: {
 }
 
 
-export async function previewRisk(): Promise<RiskPreview> {
-  return invoke<RiskPreview>("equity_preview_risk");
+export async function previewRisk(
+  accountId?: number
+): Promise<RiskPreview> {
+  return invoke<RiskPreview>("equity_preview_risk", {
+    accountId: accountId ?? null,
+  });
 }
 
 export async function getEquityConfig(): Promise<EquityConfig> {
@@ -314,8 +360,14 @@ export async function listAccounts(): Promise<AccountInfo[]> {
   return invoke<AccountInfo[]>("equity_list_accounts");
 }
 
-export async function listSnapshots(limit: number = 50): Promise<EquitySnapshotRow[]> {
-  return invoke<EquitySnapshotRow[]>("equity_list_snapshots", { limit });
+export async function listSnapshots(
+  accountId?: number,
+  limit: number = 50
+): Promise<EquitySnapshotRow[]> {
+  return invoke<EquitySnapshotRow[]>("equity_list_snapshots", {
+    accountId: accountId ?? null,
+    limit,
+  });
 }
 
 export async function deleteSnapshot(id: number): Promise<void> {
@@ -429,21 +481,35 @@ export function deriveStatus(snap: EquitySnapshotRow | null): AccountStatus {
   let label: AccountStatus["label"];
   let tone: AccountStatus["tone"];
 
-  if (ddPct >= 0.3) {
-    label = "Disabled";
-    tone = "neg";
+  // S10: prefer persisted state_enum. Fallback to legacy thresholds if absent.
+  const stateEnum = snap.state ?? null;
+  if (stateEnum) {
+    switch (stateEnum) {
+      case "normal_growth":
+        label = "Healthy"; tone = "pos"; break;
+      case "protected":
+        label = "Caution"; tone = "warn"; break;
+      case "preservation_pause":
+        label = "Paused"; tone = "neg"; break;
+      case "recovery_mode":
+        label = "Warning"; tone = "warn"; break;
+      case "daily_lock":
+        label = "Paused"; tone = "neg"; break;
+      case "prop_hard_lock":
+        label = "Disabled"; tone = "neg"; break;
+      default:
+        label = "Healthy"; tone = "pos";
+    }
+  } else if (ddPct >= 0.3) {
+    label = "Disabled"; tone = "neg";
   } else if (snap.consecutive_losses >= 5) {
-    label = "Paused";
-    tone = "neg";
+    label = "Paused"; tone = "neg";
   } else if (ddPct >= 0.1 || snap.consecutive_losses >= 3) {
-    label = "Warning";
-    tone = "neg";
+    label = "Warning"; tone = "neg";
   } else if (ddPct >= 0.05 || snap.consecutive_losses >= 2) {
-    label = "Caution";
-    tone = "warn";
+    label = "Caution"; tone = "warn";
   } else {
-    label = "Healthy";
-    tone = "pos";
+    label = "Healthy"; tone = "pos";
   }
 
   return {
@@ -460,6 +526,58 @@ export function deriveStatus(snap: EquitySnapshotRow | null): AccountStatus {
     streak: snap.consecutive_losses,
     snapshotAgeHours,
   };
+}
+
+/* ============================================================
+ *  STATE MACHINE HELPERS (S8)
+ * ============================================================ */
+
+export type EngineState =
+  | "normal_growth"
+  | "protected"
+  | "preservation_pause"
+  | "recovery_mode"
+  | "daily_lock"
+  | "prop_hard_lock";
+
+export function stateLabel(s: string): string {
+  switch (s) {
+    case "normal_growth":      return "Normal Growth";
+    case "protected":          return "Protected";
+    case "preservation_pause": return "Preservation Pause";
+    case "recovery_mode":      return "Recovery Mode";
+    case "daily_lock":         return "Daily Lock";
+    case "prop_hard_lock":     return "Prop Hard Lock";
+    default:                   return s || "—";
+  }
+}
+
+export function stateIcon(s: string): string {
+  switch (s) {
+    case "normal_growth":      return "🟢";
+    case "protected":          return "🟡";
+    case "preservation_pause": return "⏸";
+    case "recovery_mode":      return "🔬";
+    case "daily_lock":         return "🔒";
+    case "prop_hard_lock":     return "🚫";
+    default:                   return "•";
+  }
+}
+
+export function stateTone(s: string): "ok" | "warn" | "bad" | "muted" | "" {
+  switch (s) {
+    case "normal_growth":      return "ok";
+    case "protected":          return "warn";
+    case "preservation_pause": return "muted";
+    case "recovery_mode":      return "warn";
+    case "daily_lock":         return "bad";
+    case "prop_hard_lock":     return "bad";
+    default:                   return "";
+  }
+}
+
+export function isBlockingState(s: string): boolean {
+  return s === "preservation_pause" || s === "daily_lock" || s === "prop_hard_lock";
 }
 
 /* ============================================================

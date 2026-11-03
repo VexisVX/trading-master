@@ -37,20 +37,26 @@ export function Journal() {
     setLoading(true);
     setError(null);
     try {
-      const list = await listTrades(200, 0);
+      // ★ Always read fresh accountId from DB
+      const activeId = await getActiveAccountId();
+      setAccountId(activeId);
+      const list = await listTrades(activeId, 200, 0);
       setTrades(list);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []);  // no dependency on accountId
 
   useEffect(() => {
+    console.log("[Journal] useEffect fired");
     (async () => {
       try {
         const id = await getActiveAccountId();
+        console.log("[Journal] getActiveAccountId ->", id);
         setAccountId(id);
+        console.log("[Journal] setAccountId called with", id);
       } catch (e) { setError(String(e)); }
       try {
         const list = await listStrategies();
@@ -84,6 +90,19 @@ export function Journal() {
       alert(`Exported ${bytes} bytes to ${dest}`);
     } catch (e) { setError(String(e)); }
   }
+
+  // ★ Listen to account changes
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as { id?: number } | undefined;
+      if (detail?.id) {
+        setAccountId(detail.id);
+        await refresh();
+      }
+    };
+    window.addEventListener("activeAccountChanged", handler);
+    return () => window.removeEventListener("activeAccountChanged", handler);
+  }, [refresh]);
 
   return (
     <div className="journal">

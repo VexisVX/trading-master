@@ -1,78 +1,80 @@
 use super::DbError;
 use rusqlite::{params, Connection, OptionalExtension};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::FromStr;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountGoals {
     pub account_id: i64,
-    pub daily_target_pct: Decimal,
-    pub weekly_target_pct: Decimal,
-    pub monthly_target_pct: Decimal,
+    pub daily_target_pct: String,
+    pub weekly_target_pct: String,
+    pub monthly_target_pct: String,
     pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateGoals {
-    pub daily_target_pct: Decimal,
-    pub weekly_target_pct: Decimal,
-    pub monthly_target_pct: Decimal,
+    pub daily_target_pct: String,
+    pub weekly_target_pct: String,
+    pub monthly_target_pct: String,
 }
 
 pub fn get_goals(conn: &Connection, account_id: i64) -> Result<Option<AccountGoals>, DbError> {
-    conn.query_row(
-        "SELECT account_id, daily_target_pct, weekly_target_pct, monthly_target_pct, updated_at
-         FROM account_goals WHERE account_id=?1",
-        [account_id],
-        |r| {
-            let daily_s: String = r.get(1)?;
-            let weekly_s: String = r.get(2)?;
-            let monthly_s: String = r.get(3)?;
-            Ok(AccountGoals {
-                account_id: r.get(0)?,
-                daily_target_pct: Decimal::from_str_exact(&daily_s).unwrap_or_default(),
-                weekly_target_pct: Decimal::from_str_exact(&weekly_s).unwrap_or_default(),
-                monthly_target_pct: Decimal::from_str_exact(&monthly_s).unwrap_or_default(),
-                updated_at: r.get(4)?,
-            })
-        }
-    ).optional().map_err(Into::into)
+    let result = conn
+        .query_row(
+            "SELECT account_id, daily_target_pct, weekly_target_pct, monthly_target_pct, updated_at
+             FROM account_goals WHERE account_id=?1",
+            [account_id],
+            |r| {
+                Ok(AccountGoals {
+                    account_id: r.get(0)?,
+                    daily_target_pct: r.get(1)?,
+                    weekly_target_pct: r.get(2)?,
+                    monthly_target_pct: r.get(3)?,
+                    updated_at: r.get(4)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(DbError::from)?;
+    Ok(result)
 }
 
-pub fn update_goals(conn: &Connection, account_id: i64, u: &UpdateGoals) -> Result<(), DbError> {
-    if u.daily_target_pct <= Decimal::ZERO || u.daily_target_pct > Decimal::from(100) {
+pub fn set_goals(conn: &Connection, account_id: i64, g: &UpdateGoals) -> Result<(), DbError> {
+    // Validate: targets must be > 0 and <= 100
+    let daily = Decimal::from_str(&g.daily_target_pct).unwrap_or(Decimal::ZERO);
+    let weekly = Decimal::from_str(&g.weekly_target_pct).unwrap_or(Decimal::ZERO);
+    let monthly = Decimal::from_str(&g.monthly_target_pct).unwrap_or(Decimal::ZERO);
+
+    if daily <= Decimal::ZERO || daily > Decimal::from(100) {
         return Err(DbError::Sqlite(rusqlite::Error::InvalidQuery));
     }
-    if u.weekly_target_pct <= Decimal::ZERO || u.weekly_target_pct > Decimal::from(100) {
+    if weekly <= Decimal::ZERO || weekly > Decimal::from(100) {
         return Err(DbError::Sqlite(rusqlite::Error::InvalidQuery));
     }
-    if u.monthly_target_pct <= Decimal::ZERO || u.monthly_target_pct > Decimal::from(100) {
+    if monthly <= Decimal::ZERO || monthly > Decimal::from(100) {
         return Err(DbError::Sqlite(rusqlite::Error::InvalidQuery));
     }
 
     let now = chrono::Utc::now().to_rfc3339();
-    let affected = conn.execute(
-        "UPDATE account_goals SET daily_target_pct=?1, weekly_target_pct=?2, monthly_target_pct=?3, updated_at=?4
-         WHERE account_id=?5",
+    conn.execute(
+        "INSERT INTO account_goals (account_id, daily_target_pct, weekly_target_pct, monthly_target_pct, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(account_id) DO UPDATE SET
+             daily_target_pct = excluded.daily_target_pct,
+             weekly_target_pct = excluded.weekly_target_pct,
+             monthly_target_pct = excluded.monthly_target_pct,
+             updated_at = excluded.updated_at",
         params![
-            u.daily_target_pct.to_string(),
-            u.weekly_target_pct.to_string(),
-            u.monthly_target_pct.to_string(),
-            now, account_id
+            account_id,
+            g.daily_target_pct,
+            g.weekly_target_pct,
+            g.monthly_target_pct,
+            now
         ],
-    )?;
-    if affected == 0 {
-        conn.execute(
-            "INSERT INTO account_goals (account_id, daily_target_pct, weekly_target_pct, monthly_target_pct, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                account_id,
-                u.daily_target_pct.to_string(),
-                u.weekly_target_pct.to_string(),
-                u.monthly_target_pct.to_string(),
-                now
-            ],
-        )?;
-    }
+    )
+    .map_err(DbError::from)?;
+
     Ok(())
 }

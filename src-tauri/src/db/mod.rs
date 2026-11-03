@@ -10,12 +10,14 @@ use std::path::Path;
 use thiserror::Error;
 
 pub mod accounts;
+pub mod goals;
+pub mod instruments;
 pub mod equity;
 pub mod backtest;
 pub mod app_settings;
 pub mod backup;
 pub mod csv_export;
-pub mod goals;
+
 pub mod live_presets;
 pub mod prop_firm;
 pub mod risk_settings;
@@ -44,7 +46,9 @@ pub fn init_db(db_path: &Path) -> Result<Connection, DbError> {
 
     // Ensure equity snapshot detail columns exist (idempotent)
     let _ = equity::ensure_snapshot_detail_columns(&conn);
+    ensure_goals_table(&conn)?;
     let _ = equity::ensure_decision_detail_columns(&conn);
+    let _ = equity::ensure_snapshot_account_id(&conn);
     Ok(conn)
 }
 
@@ -68,7 +72,7 @@ fn set_version(conn: &Connection, v: i64) -> Result<(), DbError> {
     Ok(())
 }
 
-const CURRENT_VERSION: i64 = 19;
+const CURRENT_VERSION: i64 = 22;
 
 fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     let mut v = current_version(conn)?;
@@ -98,6 +102,9 @@ fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     if v < 17 { conn.execute_batch(MIGRATION_017)?; set_version(conn, 17)?; v = 17; }
     if v < 18 { conn.execute_batch(MIGRATION_018)?; set_version(conn, 18)?; v = 18; }
     if v < 19 { conn.execute_batch(MIGRATION_019)?; set_version(conn, 19)?; v = 19; }
+    if v < 20 { conn.execute_batch(MIGRATION_020)?; set_version(conn, 20)?; v = 20; }
+    if v < 21 { conn.execute_batch(MIGRATION_021)?; set_version(conn, 21)?; v = 21; }
+    if v < 22 { conn.execute_batch(MIGRATION_022)?; set_version(conn, 22)?; v = 22; }
     let _ = v;
 
     Ok(())
@@ -365,6 +372,83 @@ INSERT INTO account_goals (account_id, updated_at)
 SELECT id, datetime('now') FROM accounts;
 "#;
 
+const MIGRATION_020: &str = r#"
+-- Immutable cash-flow ledger (audit bند ۵).
+-- No UPDATE/DELETE via app logic. Corrections are new rows.
+CREATE TABLE IF NOT EXISTS account_cash_flows (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id      INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL CHECK (kind IN ('deposit','withdrawal','fee','funding','adjustment')),
+  amount          TEXT NOT NULL,
+  currency        TEXT NOT NULL,
+  occurred_at     TEXT NOT NULL,
+  nav_before      TEXT NOT NULL,
+  units_before    TEXT NOT NULL,
+  units_after     TEXT NOT NULL,
+  note            TEXT,
+  created_at      TEXT NOT NULL,
+  CONSTRAINT amount_nonzero CHECK (amount <> '0')
+);
+CREATE INDEX IF NOT EXISTS idx_cash_flows_account ON account_cash_flows(account_id);
+CREATE INDEX IF NOT EXISTS idx_cash_flows_occurred ON account_cash_flows(occurred_at);
+"#;
+
+const MIGRATION_021: &str = r#"
+CREATE TABLE IF NOT EXISTS prop_firm_rule_sets (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id           INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  firm_name            TEXT NOT NULL,
+  enabled              INTEGER NOT NULL DEFAULT 0,
+  dd_type              TEXT NOT NULL CHECK (dd_type IN ('static_balance','static_equity','trailing_balance','trailing_equity')),
+  dd_amount            TEXT NOT NULL,
+  dd_reference         TEXT NOT NULL CHECK (dd_reference IN ('initial_balance','high_watermark','balance','equity')),
+  daily_loss_pct       TEXT NOT NULL DEFAULT '0',
+  max_total_loss_pct   TEXT NOT NULL DEFAULT '0',
+  profit_target_pct    TEXT NOT NULL DEFAULT '0',
+  min_trading_days     INTEGER NOT NULL DEFAULT 0,
+  reset_tz             TEXT NOT NULL DEFAULT 'UTC',
+  reset_time           TEXT NOT NULL DEFAULT '00:00',
+  include_cash_flows   INTEGER NOT NULL DEFAULT 1,
+  notes                TEXT,
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_prop_rule_sets_account ON prop_firm_rule_sets(account_id);
+
+INSERT INTO prop_firm_rule_sets
+  (account_id, firm_name, enabled, dd_type, dd_amount, dd_reference,
+   daily_loss_pct, max_total_loss_pct, profit_target_pct, min_trading_days,
+   reset_tz, reset_time, include_cash_flows, notes, created_at, updated_at)
+SELECT account_id, 'legacy_migration', enabled,
+  CASE WHEN trailing_dd=1 THEN 'trailing_equity' ELSE 'static_equity' END,
+  max_dd_pct, 'initial_balance',
+  daily_loss_limit_pct, max_total_loss_pct, profit_target_pct, min_trading_days,
+  'UTC', '00:00', 1, 'migrated from v20', datetime('now'), datetime('now')
+FROM prop_firm_rules;
+"#;
+
+const MIGRATION_022: &str = r#"
+CREATE TABLE IF NOT EXISTS instruments (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol                TEXT NOT NULL UNIQUE,
+  currency              TEXT NOT NULL,
+  tick_size             TEXT NOT NULL,
+  tick_value            TEXT NOT NULL,
+  contract_size         TEXT NOT NULL,
+  min_qty               TEXT NOT NULL DEFAULT '0',
+  max_qty               TEXT NOT NULL DEFAULT '0',
+  lot_step              TEXT NOT NULL DEFAULT '0.01',
+  commission_per_lot    TEXT NOT NULL DEFAULT '0',
+  slippage_per_unit     TEXT NOT NULL DEFAULT '0',
+  spec_source           TEXT NOT NULL DEFAULT 'user_entered' CHECK (spec_source IN ('verified','user_entered','estimated')),
+  created_at            TEXT NOT NULL,
+  updated_at            TEXT NOT NULL
+);
+"#;
+
+
+
+
 // ============================================================
 // Meta helpers
 // ============================================================
@@ -377,4 +461,21 @@ pub fn get_meta(conn: &Connection, key: &str) -> Result<Option<String>, DbError>
     } else {
         Ok(None)
     }
+}
+
+
+// ============================================================
+// Ensure account_goals table exists (idempotent)
+// ============================================================
+pub fn ensure_goals_table(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS account_goals (
+            account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+            daily_target_pct   TEXT NOT NULL DEFAULT '2',
+            weekly_target_pct  TEXT NOT NULL DEFAULT '6',
+            monthly_target_pct TEXT NOT NULL DEFAULT '8',
+            updated_at TEXT NOT NULL
+        );",
+    )?;
+    Ok(())
 }

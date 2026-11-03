@@ -92,10 +92,16 @@ pub struct AccountState {
     pub profit_retention: Decimal,    // PR_t
     pub f_profit: Decimal,            // F_profit
     pub f_trail: Decimal,             // F_trail
-    pub f_prop: Decimal,              // F_prop
-    pub f_hybrid: Decimal,            // F_hybrid
-    pub loss_capacity: Decimal,       // LC_t
-    pub phase: AccountPhase,
+    pub f_prop: Decimal,              // F_prop (independent, S6)
+    pub f_internal: Decimal,          // F_internal = max(f_profit, f_trail) (S6)
+    // ---- New fields (S6) ----
+    pub state_enum: crate::equity::state_machine::State,
+    pub buffer_r: Decimal,
+    pub m_preserve: Decimal,
+    // ---- Legacy aliases (S6 transition; removed in S8) ----
+    pub f_hybrid: Decimal,            // legacy = f_internal.max(f_prop)
+    pub loss_capacity: Decimal,       // legacy = equity - f_internal
+    pub phase: AccountPhase,          // legacy = map from state_enum
 }
 
 impl AccountState {
@@ -125,41 +131,82 @@ impl AccountState {
         };
 
         // Profit retention: only positive HWM minus initial counts
-        let positive_excess = (snapshot.high_watermark - snapshot.initial_balance).max(Decimal::ZERO);
-        let profit_retention = positive_excess * q;
-
-        // F_profit only active when we have positive profit (HWM > initial).
-        // Otherwise it's Decimal::MIN so it doesn't pull the hybrid floor up.
-        let f_profit = if snapshot.high_watermark > snapshot.initial_balance {
-            snapshot.initial_balance + profit_retention
+        // S11: use protection module (smoothstep) for F_internal.
+        // Compute nav and nav_hwm relative to initial_balance.
+        let nav = if snapshot.initial_balance > Decimal::ZERO {
+            snapshot.equity / snapshot.initial_balance
         } else {
-            Decimal::MIN
+            Decimal::ONE
         };
-        // F_trail always active.
-        let f_trail = snapshot.high_watermark * (Decimal::ONE - d_trail);
-        // F_prop only active when D_prop is set (> 0).
+        let nav_hwm = if snapshot.initial_balance > Decimal::ZERO {
+            snapshot.high_watermark / snapshot.initial_balance
+        } else {
+            Decimal::ONE
+        };
+
+        let prot_cfg = crate::equity::protection::ProtectionConfig::default_v1();
+        let prot = crate::equity::protection::compute(
+            snapshot.initial_balance,
+            nav_hwm,
+            &prot_cfg,
+        );
+
+        let f_profit = prot.f_profit.unwrap_or(Decimal::ZERO);
+        let f_trail = prot.f_trail;
+        let f_internal = prot.f_internal;
+        let profit_retention = prot.q_retention * (snapshot.high_watermark - snapshot.initial_balance).max(Decimal::ZERO);
+
+        // F_prop: still uses legacy D_prop config (S12 will replace).
         let f_prop = if d_prop > Decimal::ZERO {
             snapshot.initial_balance - d_prop
         } else {
-            Decimal::MIN
+            Decimal::ZERO
         };
-        let f_hybrid = f_profit.max(f_trail).max(f_prop);
-        let loss_capacity = snapshot.equity - f_hybrid;
 
-        // Phase
-        let phase = if snapshot.equity <= f_hybrid {
-            AccountPhase::Disabled
-        } else if snapshot.consecutive_losses >= config.n_max {
-            AccountPhase::Paused
-        } else if dd_pct >= dd_3 {
-            AccountPhase::Recovery
-        } else if dd_pct >= dd_1 {
-            AccountPhase::Caution
+        // R_base for buffer_r computation.
+        let r0 = d(&config.r0, "r0").unwrap_or(Decimal::new(1, 2));
+        let r_base = snapshot.equity * r0;
+
+        // Buffer: equity - f_internal - open_risk (execution buffer default 0).
+        let raw_b = snapshot.equity - f_internal - snapshot.open_portfolio_risk;
+        let b = if raw_b > Decimal::ZERO { raw_b } else { Decimal::ZERO };
+        let buffer_r = if r_base.is_zero() { Decimal::ZERO } else { b / r_base };
+
+        // M_preserve piecewise (spec §6).
+        let m_preserve = if buffer_r >= Decimal::from(8) {
+            Decimal::ONE
+        } else if buffer_r > Decimal::from(2) {
+            let frac = (buffer_r - Decimal::from(2)) / Decimal::from(6);
+            Decimal::new(25, 2) + Decimal::new(75, 2) * frac
         } else {
-            AccountPhase::Normal
+            Decimal::ZERO
         };
 
-        let _ = (dd_2, dd_3); // available for future use
+        // State machine.
+        use crate::equity::state_machine::{next, State, TransitionInput};
+        let previous = State::NormalGrowth;
+        let prop_breached = snapshot.equity <= f_prop && f_prop > Decimal::ZERO;
+        let daily_locked = false;
+        let ti = TransitionInput {
+            previous,
+            prop_breached,
+            daily_locked,
+            buffer_r,
+            recovery_authorized: false,
+        };
+        let state_enum = next(&ti);
+
+        // Legacy aliases.
+        let f_hybrid = f_internal.max(f_prop);
+        let loss_capacity = (snapshot.equity - f_internal).max(Decimal::ZERO);
+        let phase = match state_enum {
+            State::PropHardLock => AccountPhase::Disabled,
+            State::PreservationPause => AccountPhase::Paused,
+            State::RecoveryMode => AccountPhase::Recovery,
+            State::Protected => AccountPhase::Caution,
+            State::DailyLock => AccountPhase::Paused,
+            State::NormalGrowth => AccountPhase::Normal,
+        };
 
         Ok(Self {
             snapshot,
@@ -169,6 +216,11 @@ impl AccountState {
             f_profit,
             f_trail,
             f_prop,
+            f_internal,
+            state_enum,
+            buffer_r,
+            m_preserve,
+            // legacy aliases
             f_hybrid,
             loss_capacity,
             phase,

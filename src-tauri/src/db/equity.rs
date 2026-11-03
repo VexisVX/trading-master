@@ -4,7 +4,7 @@
 use super::DbError;
 use rusqlite::Connection;
 
-pub const EQUITY_SCHEMA_VERSION: i64 = 1;
+pub const EQUITY_SCHEMA_VERSION: i64 = 3;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS equity_config (
@@ -43,8 +43,44 @@ CREATE TABLE IF NOT EXISTS equity_decisions (
 CREATE INDEX IF NOT EXISTS idx_equity_dec_created ON equity_decisions(created_at);
 "#;
 
+const EQUITY_MIGRATION_002: &str = r#"
+-- Units / NAV tracking (audit بند ۳).
+CREATE TABLE IF NOT EXISTS equity_units (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id      INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  units           TEXT NOT NULL,
+  nav             TEXT NOT NULL,
+  equity          TEXT NOT NULL,
+  source          TEXT NOT NULL CHECK (source IN ('init','deposit','withdraw','trade','adjustment')),
+  cash_flow_id    INTEGER REFERENCES account_cash_flows(id),
+  taken_at        TEXT NOT NULL,
+  created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_units_account_time ON equity_units(account_id, taken_at);
+"#;
+
+const EQUITY_MIGRATION_003: &str = r#"
+CREATE TABLE IF NOT EXISTS recovery_authorizations (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id      INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  authorized_by   TEXT NOT NULL,
+  authorized_at   TEXT NOT NULL,
+  expires_at      TEXT,
+  revoked_at      TEXT,
+  reason          TEXT,
+  probe_risk_pct  TEXT NOT NULL DEFAULT '0.25',
+  created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recovery_account ON recovery_authorizations(account_id);
+"#;
+
+
+
 pub fn init_equity_schema(conn: &Connection) -> Result<(), DbError> {
     conn.execute_batch(MIGRATION_001)?;
+    conn.execute_batch(EQUITY_MIGRATION_002)?;
+    conn.execute_batch(EQUITY_MIGRATION_003)?;
+    ensure_snapshot_nav_columns(conn)?;
     conn.execute(
         "INSERT INTO app_meta (key, value) VALUES ('equity_schema_version', ?1)
          ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -79,24 +115,51 @@ pub fn save_config(conn: &Connection, json: &str) -> Result<(), DbError> {
 
 pub fn insert_snapshot(conn: &Connection, s: &SnapshotRow) -> Result<i64, DbError> {
     let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
+
+    // Try full insert with the new columns. If they don't exist on older DBs
+    // (should not happen after EQUITY_MIGRATION_002 + ensure_snapshot_nav_columns),
+    // fall back to the legacy column set.
+    let full = conn.execute(
         "INSERT INTO equity_snapshots
-            (equity, initial_balance, high_watermark, low_watermark,
+            (account_id, equity, initial_balance, high_watermark, low_watermark,
              day_start_equity, open_portfolio_risk, daily_loss,
              consecutive_losses, taken_at, created_at,
-             phase, protected_profit, equity_floor, loss_capacity)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
+             phase, protected_profit, equity_floor, loss_capacity,
+             state, buffer_r, m_preserve, f_internal, f_prop)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
         rusqlite::params![
+            s.account_id,
             s.equity, s.initial_balance, s.high_watermark, s.low_watermark,
             s.day_start_equity, s.open_portfolio_risk, s.daily_loss,
             s.consecutive_losses, s.taken_at, now,
             s.phase, s.protected_profit, s.equity_floor, s.loss_capacity,
+            s.state, s.buffer_r, s.m_preserve, s.f_internal, s.f_prop_val,
         ],
-    )?;
+    );
+
+    if full.is_err() {
+        // Legacy fallback
+        conn.execute(
+            "INSERT INTO equity_snapshots
+                (account_id, equity, initial_balance, high_watermark, low_watermark,
+                 day_start_equity, open_portfolio_risk, daily_loss,
+                 consecutive_losses, taken_at, created_at,
+                 phase, protected_profit, equity_floor, loss_capacity)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
+            rusqlite::params![
+                s.account_id,
+                s.equity, s.initial_balance, s.high_watermark, s.low_watermark,
+                s.day_start_equity, s.open_portfolio_risk, s.daily_loss,
+                s.consecutive_losses, s.taken_at, now,
+                s.phase, s.protected_profit, s.equity_floor, s.loss_capacity,
+            ],
+        )?;
+    }
     Ok(conn.last_insert_rowid())
 }
 
 pub struct SnapshotRow<'a> {
+    pub account_id: Option<i64>,
     pub equity: &'a str,
     pub initial_balance: &'a str,
     pub high_watermark: &'a str,
@@ -106,41 +169,96 @@ pub struct SnapshotRow<'a> {
     pub daily_loss: &'a str,
     pub consecutive_losses: i64,
     pub taken_at: &'a str,
-    // New optional fields (default None)
+    // legacy
     pub phase: Option<&'a str>,
     pub protected_profit: Option<&'a str>,
     pub equity_floor: Option<&'a str>,
     pub loss_capacity: Option<&'a str>,
+    // new (S10) — optional so existing callers still compile
+    pub state: Option<&'a str>,
+    pub buffer_r: Option<&'a str>,
+    pub m_preserve: Option<&'a str>,
+    pub f_internal: Option<&'a str>,
+    pub f_prop_val: Option<&'a str>,
 }
 
-pub fn latest_snapshot(conn: &Connection) -> Result<Option<EquitySnapshotRow>, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT id, equity, initial_balance, high_watermark, low_watermark,
-                day_start_equity, open_portfolio_risk, daily_loss,
-                consecutive_losses, taken_at,
-                phase, protected_profit, equity_floor, loss_capacity
-         FROM equity_snapshots
-         ORDER BY taken_at DESC, id DESC LIMIT 1",
-    )?;
-    let mut rows = stmt.query([])?;
-    if let Some(r) = rows.next()? {
-        Ok(Some(EquitySnapshotRow {
-            id: r.get(0)?,
-            equity: r.get(1)?,
-            initial_balance: r.get(2)?,
-            high_watermark: r.get(3)?,
-            low_watermark: r.get(4)?,
-            day_start_equity: r.get(5)?,
-            open_portfolio_risk: r.get(6)?,
-            daily_loss: r.get(7)?,
-            consecutive_losses: r.get(8)?,
-            taken_at: r.get(9)?,
-            phase: r.get(10).ok(),
-            protected_profit: r.get(11).ok(),
-            equity_floor: r.get(12).ok(),
-            loss_capacity: r.get(13).ok(),
-        }))
+pub fn latest_snapshot(
+    conn: &Connection,
+    account_id: Option<i64>,
+) -> Result<Option<EquitySnapshotRow>, DbError> {
+    let _ = ensure_snapshot_detail_columns(conn);
+    let _ = ensure_snapshot_account_id(conn);
+
+    if let Some(aid) = account_id {
+        let mut stmt = conn.prepare(
+            "SELECT id, equity, initial_balance, high_watermark, low_watermark,
+                    day_start_equity, open_portfolio_risk, daily_loss,
+                    consecutive_losses, taken_at,
+                    phase, protected_profit, equity_floor, loss_capacity,
+                    state, buffer_r, m_preserve, f_internal, f_prop
+             FROM equity_snapshots
+             WHERE account_id = ?1
+             ORDER BY taken_at DESC, id DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query([aid])?;
+        if let Some(r) = rows.next()? {
+            return Ok(Some(EquitySnapshotRow {
+                id: r.get(0)?,
+                equity: r.get(1)?,
+                initial_balance: r.get(2)?,
+                high_watermark: r.get(3)?,
+                low_watermark: r.get(4)?,
+                day_start_equity: r.get(5)?,
+                open_portfolio_risk: r.get(6)?,
+                daily_loss: r.get(7)?,
+                consecutive_losses: r.get(8)?,
+                taken_at: r.get(9)?,
+                phase: r.get(10).ok(),
+                protected_profit: r.get(11).ok(),
+                equity_floor: r.get(12).ok(),
+                loss_capacity: r.get(13).ok(),
+                state: r.get(14).ok(),
+                buffer_r: r.get(15).ok(),
+                m_preserve: r.get(16).ok(),
+                f_internal: r.get(17).ok(),
+                f_prop_val: r.get(18).ok(),
+            }));
+        }
+        Ok(None)
     } else {
+        let mut stmt = conn.prepare(
+            "SELECT id, equity, initial_balance, high_watermark, low_watermark,
+                    day_start_equity, open_portfolio_risk, daily_loss,
+                    consecutive_losses, taken_at,
+                    phase, protected_profit, equity_floor, loss_capacity,
+                    state, buffer_r, m_preserve, f_internal, f_prop
+             FROM equity_snapshots
+             ORDER BY taken_at DESC, id DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query([])?;
+        if let Some(r) = rows.next()? {
+            return Ok(Some(EquitySnapshotRow {
+                id: r.get(0)?,
+                equity: r.get(1)?,
+                initial_balance: r.get(2)?,
+                high_watermark: r.get(3)?,
+                low_watermark: r.get(4)?,
+                day_start_equity: r.get(5)?,
+                open_portfolio_risk: r.get(6)?,
+                daily_loss: r.get(7)?,
+                consecutive_losses: r.get(8)?,
+                taken_at: r.get(9)?,
+                phase: r.get(10).ok(),
+                protected_profit: r.get(11).ok(),
+                equity_floor: r.get(12).ok(),
+                loss_capacity: r.get(13).ok(),
+                state: r.get(14).ok(),
+                buffer_r: r.get(15).ok(),
+                m_preserve: r.get(16).ok(),
+                f_internal: r.get(17).ok(),
+                f_prop_val: r.get(18).ok(),
+            }));
+        }
         Ok(None)
     }
 }
@@ -157,11 +275,16 @@ pub struct EquitySnapshotRow {
     pub daily_loss: String,
     pub consecutive_losses: i64,
     pub taken_at: String,
-    // New fields (NULL for old snapshots)
     pub phase: Option<String>,
     pub protected_profit: Option<String>,
     pub equity_floor: Option<String>,
     pub loss_capacity: Option<String>,
+    // S10 new
+    pub state: Option<String>,
+    pub buffer_r: Option<String>,
+    pub m_preserve: Option<String>,
+    pub f_internal: Option<String>,
+    pub f_prop_val: Option<String>,
 }
 
 // ---------- Decision persistence ----------
@@ -293,6 +416,24 @@ pub fn ensure_decision_detail_columns(conn: &rusqlite::Connection) -> rusqlite::
     }
     Ok(())
 }
+// ============================================================
+// Migration: add account_id to equity_snapshots (idempotent)
+// ============================================================
+pub fn ensure_snapshot_account_id(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let mut existing: Vec<String> = Vec::new();
+    {
+        let mut stmt = conn.prepare("PRAGMA table_info(equity_snapshots)")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
+        for r in rows {
+            existing.push(r?);
+        }
+    }
+    if !existing.iter().any(|e| e == "account_id") {
+        conn.execute("ALTER TABLE equity_snapshots ADD COLUMN account_id INTEGER", [])?;
+    }
+    Ok(())
+}
+
 
 
 // Updated EquitySnapshotRow with new optional fields
@@ -311,4 +452,52 @@ pub struct EquitySnapshotRowExt {
     pub protected_profit: Option<String>,
     pub equity_floor: Option<String>,
     pub loss_capacity: Option<String>,
+}
+
+
+// ============================================================
+// Migration: add NAV/Units columns to equity_snapshots (idempotent)
+// ============================================================
+pub fn ensure_snapshot_nav_columns(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let mut existing: Vec<String> = Vec::new();
+    {
+        let mut stmt = conn.prepare("PRAGMA table_info(equity_snapshots)")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
+        for r in rows { existing.push(r?); }
+    }
+    let additions = [
+        ("units", "TEXT"),
+        ("nav", "TEXT"),
+        ("buffer", "TEXT"),
+        ("buffer_r", "TEXT"),
+        ("m_preserve", "TEXT"),
+        ("f_internal", "TEXT"),
+        ("f_prop", "TEXT"),
+        ("execution_buffer", "TEXT"),
+        ("state", "TEXT"),
+    ];
+    for (col, ty) in additions.iter() {
+        if !existing.iter().any(|e| e == col) {
+            conn.execute(
+                &format!("ALTER TABLE equity_snapshots ADD COLUMN {} {}", col, ty),
+                [],
+            )?;
+        }
+    }
+    // decision columns
+    let mut dec: Vec<String> = Vec::new();
+    {
+        let mut stmt = conn.prepare("PRAGMA table_info(equity_decisions)")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
+        for r in rows { dec.push(r?); }
+    }
+    for (col, ty) in [("state_from","TEXT"),("state_to","TEXT"),("buffer_r_at_decision","TEXT")].iter() {
+        if !dec.iter().any(|e| e == col) {
+            conn.execute(
+                &format!("ALTER TABLE equity_decisions ADD COLUMN {} {}", col, ty),
+                [],
+            )?;
+        }
+    }
+    Ok(())
 }

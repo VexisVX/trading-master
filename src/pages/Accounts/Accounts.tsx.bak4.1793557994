@@ -1,0 +1,348 @@
+import { useCallback, useEffect, useState } from "react";
+import {
+  Account, listAccounts, createAccount,
+  deleteAccount, getActiveAccountId, setActiveAccountId,
+  backupAccountJson,
+} from "../../lib/accountsApi";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
+import { getSummary } from "../../lib/analyticsApi";
+import { CreateAccountModal } from "./CreateAccountModal";
+import { updatePropFirmRules } from "../../lib/propFirmApi";
+import { EditAccountModal } from "./EditAccountModal";
+import { RiskSettingsModal } from "./RiskSettingsModal";
+import { PropFirmModal } from "./PropFirmModal";
+import { GoalsModal } from "./GoalsModal";
+import "./Accounts.css";
+
+export function Accounts() {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [activeId, setActiveId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showNew, setShowNew] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
+  const [editFor, setEditFor] = useState<Account | null>(null);
+  const [riskFor, setRiskFor] = useState<Account | null>(null);
+  const [propFor, setPropFor] = useState<Account | null>(null);
+  const [goalsFor, setGoalsFor] = useState<Account | null>(null);
+const refresh = useCallback(async () => {
+    setError(null);
+    try {
+      setAccounts(await listAccounts());
+      setActiveId(await getActiveAccountId());
+    } catch (e) { setError(String(e)); }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+async function selectAccount(id: number) {
+    try {
+      await setActiveAccountId(id);
+      setActiveId(id);
+      setAccounts((prev) => prev.map((a) => ({ ...a, is_active: a.id === id })));
+    } catch (e) { setError(String(e)); }
+  }
+
+  function removeAccount(id: number) {
+    if (accounts.length <= 1) {
+      alert("This is your only account. Create another first.");
+      return;
+    }
+    const acct = accounts.find((a) => a.id === id);
+    setConfirmDelete({ id, name: acct?.name ?? `#${id}` });
+  }
+
+  async function doDelete() {
+    if (!confirmDelete) return;
+    try {
+      await deleteAccount(confirmDelete.id);
+      setConfirmDelete(null);
+      await refresh();
+    } catch (e) { setError(String(e)); }
+  }
+  return (
+    <div className="accounts">
+      
+
+      <header className="accounts__header">
+        <div>
+          <h1 className="accounts__title">Accounts</h1>
+          <p className="accounts__subtitle">
+            Manage your trading accounts, risk rules, and goals
+          </p>
+        </div>
+        <div className="accounts__header-actions">
+          <button
+            className="btn btn--primary btn--small"
+            onClick={() => setShowNew(true)}
+          >
+            + New account
+          </button>
+        </div>
+      </header>
+
+      {error && <div className="card card--error">{error}</div>}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete account "${confirmDelete.name}"?`}
+          body="All trades, rules and settings for this account will be permanently removed. This cannot be undone."
+          confirmLabel="Delete"
+          cancelLabel="Keep"
+          tone="danger"
+          onConfirm={doDelete}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+            {showNew && (
+        <CreateAccountModal
+          onClose={() => setShowNew(false)}
+          onCreated={async () => { setShowNew(false); await refresh(); }}
+          onCreate={async (data) => {
+            await createAccount({
+              name: data.name,
+              currency: data.currency,
+              initial_balance: data.initial_balance,
+              kind: data.kind,
+            });
+            // If prop firm, also save rules
+            if (data.kind === "prop_firm" && data.prop_firm) {
+              const accountsAfter = await listAccounts();
+              const newAcc = accountsAfter.find((a) => a.name === data.name);
+              if (newAcc) {
+                await updatePropFirmRules(newAcc.id, {
+                  enabled: true,
+                  max_dd_pct: data.prop_firm.max_total_drawdown_pct,
+                  trailing_dd: true,
+                  daily_loss_limit_pct: data.prop_firm.max_daily_loss_pct,
+                  max_total_loss_pct: data.prop_firm.max_total_drawdown_pct,
+                  profit_target_pct: data.prop_firm.profit_target_pct,
+                  min_trading_days: 5,
+                });
+              }
+            }
+          }}
+        />
+      )}
+
+      
+        <div className="accounts__grid">
+          {accounts.map((a) => (
+            <AccountCard
+              key={a.id}
+              account={a}
+              active={a.id === activeId}
+              onClick={() => selectAccount(a.id)}
+              onDelete={() => removeAccount(a.id)}
+              onEdit={() => setEditFor(a)}
+              onEditRisk={() => setRiskFor(a)}
+              onEditProp={() => setPropFor(a)}
+              onEditGoals={() => setGoalsFor(a)}
+            />
+          ))}
+        </div>
+      
+
+      
+
+      
+      {editFor && (
+        <EditAccountModal
+          account={editFor}
+          onClose={() => setEditFor(null)}
+          onSaved={async () => {
+            setEditFor(null);
+            await refresh();
+          }}
+        />
+      )}
+
+      {riskFor && (
+        <RiskSettingsModal
+          account={riskFor}
+          onClose={() => setRiskFor(null)}
+          onSaved={async () => {
+            await refresh();
+          }}
+        />
+      )}
+
+      {propFor && (
+        <PropFirmModal
+          account={propFor}
+          onClose={() => setPropFor(null)}
+          onSaved={async () => {
+            await refresh();
+          }}
+        />
+      )}
+
+      {goalsFor && (
+        <GoalsModal
+          account={goalsFor}
+          onClose={() => setGoalsFor(null)}
+          onSaved={async () => {
+            await refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AccountCard({ account, active, onClick, onDelete, onEdit, onEditRisk, onEditProp, onEditGoals }: {
+  account: Account;
+  active: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+  onEdit: () => void;
+  onEditRisk: () => void;
+  onEditProp: () => void;
+  onEditGoals: () => void;
+}) {
+  // ★ Backup handler (local, no prop needed)
+  const [backupState, setBackupState] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
+
+  async function handleBackup(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (backupState === "busy") return;
+    setBackupState("busy");
+    setBackupMsg(null);
+    try {
+      const path = await backupAccountJson(account.id);
+      setBackupState("done");
+      setBackupMsg(path);
+      // Clear after 4 seconds
+      setTimeout(() => {
+        setBackupState("idle");
+        setBackupMsg(null);
+      }, 4000);
+    } catch (err) {
+      setBackupState("error");
+      setBackupMsg(String(err));
+      setTimeout(() => {
+        setBackupState("idle");
+        setBackupMsg(null);
+      }, 5000);
+    }
+  }
+  const [stats, setStats] = useState<{ pnl: string; wins: number; losses: number } | null>(null);
+
+  useEffect(() => {
+    // Load summary only for active account to avoid hitting rate limits
+    if (!active) return;
+    getSummary(account.id).then((s) => {
+      setStats({ pnl: s.net_pnl, wins: s.wins, losses: s.losses });
+    }).catch(() => {});
+  }, [active]);
+
+  return (
+    <div className={`acc-card ${active ? "is-active" : ""}`} onClick={onClick}>
+      <div className="acc-card__head">
+        <span className="acc-card__name">
+          {account.name}
+          <button
+            className="acc-card__edit"
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            title="Edit account"
+          >
+            ✏
+          </button>
+          <button
+            className="acc-card__edit acc-card__goals"
+            onClick={(e) => { e.stopPropagation(); onEditGoals(); }}
+            title="Goals"
+          >
+            🎯
+          </button>
+        </span>
+        <span className={`acc-kind acc-kind--${account.kind}`}>
+          {account.kind === "prop_firm" ? "Prop-firm" : "Personal"}
+        </span>
+      </div>
+      <div className="acc-card__meta">
+        <span className="mono">{account.currency}</span>
+        <span className="dim">·</span>
+        <span className="mono">{Number(account.initial_balance).toLocaleString()}</span>
+      </div>
+      {stats && active && (
+        <div className="acc-card__stats">
+          <div>
+            <span className="label">P&L</span>
+            <span className={`value mono ${Number(stats.pnl) >= 0 ? "pos" : "neg"}`}>
+              {Number(stats.pnl) >= 0 ? "+" : ""}{Number(stats.pnl).toFixed(2)}
+            </span>
+          </div>
+          <div>
+            <span className="label">W/L</span>
+            <span className="value mono">{stats.wins}/{stats.losses}</span>
+          </div>
+        </div>
+      )}
+      <div className="acc-card__actions">
+        <button
+          className="acc-card__action-btn"
+          onClick={(e) => { e.stopPropagation(); onEditRisk(); }}
+        >
+          ⚙ Risk Settings
+        </button>
+        {account.kind === "prop_firm" && (
+          <button
+            className="acc-card__action-btn"
+            onClick={(e) => { e.stopPropagation(); onEditProp(); }}
+          >
+            🏛 Prop-firm Rules
+          </button>
+        )}
+      </div>
+
+      <div className="acc-card__footer-actions">
+        <button
+          className="acc-card__backup-btn"
+          onClick={handleBackup}
+          disabled={backupState === "busy"}
+          title="Backup this account to JSON file"
+        >
+          {backupState === "busy" ? "Saving…" : "Backup"}
+        </button>
+        <button
+          className="acc-card__delete-btn"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        >
+          Delete
+        </button>
+      </div>
+
+      {backupMsg && (
+        <div
+          className={`acc-card__toast ${
+            backupState === "done" ? "is-ok" : "is-err"
+          }`}
+        >
+          {backupState === "done" ? "✓ Saved: " : "✗ "}
+          <span className="mono" style={{ fontSize: 10 }}>
+            {backupMsg}
+          </span>
+        </div>
+      )}
+
+      <div className="acc-card__actions">
+        <button
+          className="acc-card__action-btn"
+          onClick={(e) => { e.stopPropagation(); onEditRisk(); }}
+        >
+          ⚙ Risk Settings
+        </button>
+        {account.kind === "prop_firm" && (
+          <button
+            className="acc-card__action-btn"
+            onClick={(e) => { e.stopPropagation(); onEditProp(); }}
+          >
+            🏛 Prop-firm Rules
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+

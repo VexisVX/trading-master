@@ -4,11 +4,20 @@
 //! Evaluation is Fail-fast; every rejection has a structured reason.
 
 pub mod config;
+pub mod nav;
+pub mod buffer;
+pub mod state_machine;
+pub mod recovery;
+pub mod protection;
+pub mod prop_rules;
+pub mod cashflow;
 pub mod engine;
 pub mod error;
 pub mod risk_engine;
 pub mod sizing;
 pub mod state;
+#[cfg(test)]
+pub mod simulation;
 
 pub use config::EquityConfig;
 pub use engine::{evaluate, TradeDecision, TradeProposal};

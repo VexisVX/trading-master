@@ -10,13 +10,15 @@ import {
 
 interface Props {
   hasSnapshot: boolean;
-  allowedRisk: number;      // ← from parent (equity × r0)
+  allowedRisk: number;
+  accountId?: number;
   onOpenWhyThisSize: (result: DecisionOut) => void;
 }
 
 export function NewTradeCard({
   hasSnapshot,
   allowedRisk,
+  accountId,
   onOpenWhyThisSize,
 }: Props) {
   const [entry, setEntry] = useState("1.1000");
@@ -59,7 +61,7 @@ export function NewTradeCard({
     }
     setBusy(true);
     try {
-      const r = await evaluateTrade({
+      const r = await evaluateTrade(accountId, {
         entry,
         stop,
         take_profit: tp || null,

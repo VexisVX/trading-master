@@ -102,8 +102,16 @@ export async function createTrade(trade: NewTrade): Promise<number> {
   return invoke<number>("trades_create", { trade });
 }
 
-export async function listTrades(limit = 100, offset = 0): Promise<Trade[]> {
-  return invoke<Trade[]>("trades_list", { limit, offset });
+export async function listTrades(
+  accountId: number | undefined,
+  limit = 100,
+  offset = 0
+): Promise<Trade[]> {
+  return invoke<Trade[]>("trades_list", {
+    accountId: accountId ?? null,
+    limit,
+    offset,
+  });
 }
 
 export async function getTrade(id: number): Promise<Trade | null> {

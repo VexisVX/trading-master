@@ -1,4 +1,4 @@
-import { DecisionOut, fmtMoney, fmtPct, parseDec } from "../../lib/equityApi";
+import { DecisionOut, fmtMoney, fmtPct, parseDec, stateLabel } from "../../lib/equityApi";
 
 interface Props {
   result: DecisionOut | null;
@@ -141,6 +141,7 @@ export function WhyThisSizeModal({ result, onClose }: Props) {
                     </div>
                   )}
                   <div>
+                    <strong>State:</strong> {stateLabel(result.state_enum || result.state)} ·{" "}
                     <strong>Phase:</strong> {result.phase} ·{" "}
                     <strong>DD:</strong> {fmtPct(result.dd_pct)}
                   </div>

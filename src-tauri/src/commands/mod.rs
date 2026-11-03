@@ -1,10 +1,11 @@
 pub mod accounts;
+pub mod goals;
 pub mod backtest;
 pub mod equity;
 pub mod backup;
 pub mod analytics;
 pub mod live_calc;
-pub mod goals;
+
 pub mod news;
 pub mod live_presets;
 pub mod prop_firm;

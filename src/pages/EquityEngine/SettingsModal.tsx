@@ -6,7 +6,6 @@ import {
   getEquityConfig,
   setEquityConfig,
   fmtMoney,
-  fmtPct,
   parseDec,
 } from "../../lib/equityApi";
 

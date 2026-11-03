@@ -27,7 +27,7 @@ export function SnapshotsModal({ onClose, onChange }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const list = await listSnapshots(200);
+      const list = await listSnapshots(undefined, 200);
       setSnapshots(list);
     } catch (e) {
       setError(String(e));

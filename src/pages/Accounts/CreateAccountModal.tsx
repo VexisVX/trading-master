@@ -89,28 +89,28 @@ export function CreateAccountModal({ onClose, onCreated, onCreate }: Props) {
 
   return (
     <div
-      className="ee-modal-backdrop"
+      className="ca-backdrop"
       onClick={onClose}
       style={{ zIndex: 1200 }}
     >
       <div
-        className="ee-modal"
+        className="ca-modal"
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: 620 }}
       >
-        <div className="ee-modal__header">
+        <div className="ca-modal__header">
           <div>
-            <h3 className="ee-modal__title">Create New Account</h3>
-            <p className="ee-modal__subtitle">
+            <h3 className="ca-modal__title">Create New Account</h3>
+            <p className="ca-modal__subtitle">
               Set up a personal or prop firm account
             </p>
           </div>
-          <button className="ee-modal__close" onClick={onClose}>
+          <button className="ca-modal__close" onClick={onClose}>
             ✕
           </button>
         </div>
 
-        <div className="ee-modal__body">
+        <div className="ca-modal__body">
           {/* Account type selector */}
           <div className="ca-type-label">Account type</div>
           <div className="ca-type-grid">
@@ -140,8 +140,8 @@ export function CreateAccountModal({ onClose, onCreated, onCreate }: Props) {
 
           {/* Basic info */}
           <div className="ca-section-title">Account details</div>
-          <div className="ee-form-row">
-            <label className="ee-field" style={{ gridColumn: "1 / -1" }}>
+          <div className="ca-form-row">
+            <label className="ca-field" style={{ gridColumn: "1 / -1" }}>
               <span>Account name *</span>
               <input
                 value={name}
@@ -151,8 +151,8 @@ export function CreateAccountModal({ onClose, onCreated, onCreate }: Props) {
             </label>
           </div>
 
-          <div className="ee-form-row">
-            <label className="ee-field">
+          <div className="ca-form-row">
+            <label className="ca-field">
               <span>Initial balance *</span>
               <input
                 className="mono"
@@ -161,7 +161,7 @@ export function CreateAccountModal({ onClose, onCreated, onCreate }: Props) {
                 placeholder="10000"
               />
             </label>
-            <label className="ee-field">
+            <label className="ca-field">
               <span>Currency</span>
               <select
                 className="ee-select"
@@ -184,8 +184,8 @@ export function CreateAccountModal({ onClose, onCreated, onCreate }: Props) {
           {kind === "prop_firm" && (
             <>
               <div className="ca-section-title">Prop firm rules</div>
-              <div className="ee-form-row">
-                <label className="ee-field" style={{ gridColumn: "1 / -1" }}>
+              <div className="ca-form-row">
+                <label className="ca-field" style={{ gridColumn: "1 / -1" }}>
                   <span>Firm name</span>
                   <input
                     value={firmName}
@@ -194,8 +194,8 @@ export function CreateAccountModal({ onClose, onCreated, onCreate }: Props) {
                   />
                 </label>
               </div>
-              <div className="ee-form-row">
-                <label className="ee-field">
+              <div className="ca-form-row">
+                <label className="ca-field">
                   <span>Max daily loss</span>
                   <input
                     className="mono"
@@ -203,11 +203,11 @@ export function CreateAccountModal({ onClose, onCreated, onCreate }: Props) {
                     onChange={(e) => setMaxDailyLoss(e.target.value)}
                     placeholder="5"
                   />
-                  <em className="ee-hint">
+                  <em className="ca-hint">
                     % of balance → {fmtMoney(dailyLossUsd)}
                   </em>
                 </label>
-                <label className="ee-field">
+                <label className="ca-field">
                   <span>Max total drawdown</span>
                   <input
                     className="mono"
@@ -215,11 +215,11 @@ export function CreateAccountModal({ onClose, onCreated, onCreate }: Props) {
                     onChange={(e) => setMaxDrawdown(e.target.value)}
                     placeholder="10"
                   />
-                  <em className="ee-hint">
+                  <em className="ca-hint">
                     % of balance → {fmtMoney(maxDdUsd)}
                   </em>
                 </label>
-                <label className="ee-field">
+                <label className="ca-field">
                   <span>Profit target</span>
                   <input
                     className="mono"
@@ -227,7 +227,7 @@ export function CreateAccountModal({ onClose, onCreated, onCreate }: Props) {
                     onChange={(e) => setProfitTarget(e.target.value)}
                     placeholder="10"
                   />
-                  <em className="ee-hint">
+                  <em className="ca-hint">
                     % of balance → {fmtMoney(profitTargetUsd)}
                   </em>
                 </label>
@@ -286,12 +286,12 @@ export function CreateAccountModal({ onClose, onCreated, onCreate }: Props) {
           )}
         </div>
 
-        <div className="ee-modal__footer">
-          <button className="ee-btn ee-btn--ghost" onClick={onClose} disabled={busy}>
+        <div className="ca-modal__footer">
+          <button className="ca-btn ca-btn--ghost" onClick={onClose} disabled={busy}>
             Cancel
           </button>
           <button
-            className="ee-btn ee-btn--primary"
+            className="ca-btn ca-btn--primary"
             onClick={handleCreate}
             disabled={!canCreate || busy}
           >

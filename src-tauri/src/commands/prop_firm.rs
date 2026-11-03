@@ -50,7 +50,7 @@ pub fn prop_firm_status(state: State<AppState>, account_id: i64) -> Result<Strin
         .map_err(|e| e.to_string())?;
     let initial = Decimal::from_str(&initial_str).map_err(|e| e.to_string())?;
 
-    let trades = trades_db::list_trades(&conn, 500, 0).map_err(|e| e.to_string())?;
+    let trades = trades_db::list_trades(&conn, None, 500, 0).map_err(|e| e.to_string())?;
 
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let status = evaluate_prop_firm(&rules, initial, &trades, &today);

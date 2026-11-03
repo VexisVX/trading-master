@@ -1195,3 +1195,34 @@
   background: rgba(136, 136, 136, 0.15);
   color: #888;
 }
+
+/* S8 — State badge */
+.ee-state-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 8px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+.ee-state-badge--ok    { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+.ee-state-badge--warn  { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+.ee-state-badge--bad   { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+.ee-state-badge--muted { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
+.ee-state-badge__icon  { font-size: 14px; }
+.ee-state-badge__label { letter-spacing: 0.2px; }
+
+.ee-risk-floors__row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px dashed #e5e7eb;
+}
+.ee-risk-floors__row:last-child { border-bottom: none; }
+.ee-risk-floors__label { font-size: 12px; color: #6b7280; }
+.ee-risk-floors__value { font-family: ui-monospace, monospace; font-size: 12px; color: #111827; }

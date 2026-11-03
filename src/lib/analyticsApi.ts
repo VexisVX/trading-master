@@ -46,8 +46,10 @@ export interface Summary {
   early_exit_count: number;
 }
 
-export async function getSummary(): Promise<Summary> {
-  const raw = await invoke<string>("analytics_summary");
+export async function getSummary(accountId?: number): Promise<Summary> {
+  const raw = await invoke<string>("analytics_summary", {
+    accountId: accountId ?? null,
+  });
   return JSON.parse(raw);
 }
 
@@ -93,4 +95,21 @@ export async function getBreakdown(accountId: number, fromDate?: string, toDate?
     toDate: toDate ?? null,
   });
   return JSON.parse(raw);
+}
+
+/* ============================================================
+ *  Period PnL — daily, weekly, monthly
+ * ============================================================ */
+
+export interface PeriodPnl {
+  daily_pct: string;
+  weekly_pct: string;
+  monthly_pct: string;
+  daily_pnl: string;
+  weekly_pnl: string;
+  monthly_pnl: string;
+}
+
+export async function getPeriodPnl(accountId: number): Promise<PeriodPnl> {
+  return invoke<PeriodPnl>("analytics_period_pnl", { accountId });
 }

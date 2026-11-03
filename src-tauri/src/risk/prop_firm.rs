@@ -14,12 +14,11 @@
 //! A rule with limit == 0 is treated as disabled and always passes.
 
 use rust_decimal::Decimal;
-use rust_decimal::RoundingStrategy;
 use crate::domain::prop_firm::{PropFirmRules, PropFirmStatus, RuleCheck};
 use crate::domain::trade::{Trade, TradeStatus};
 
 fn round2(v: Decimal) -> Decimal {
-    v.round_dp_with_strategy(2, RoundingStrategy::MidpointNearestEven)
+    super::money::round_money(v, 2)
 }
 
 fn pct(num: Decimal, den: Decimal) -> Decimal {

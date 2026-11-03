@@ -1,4 +1,4 @@
-import { RiskPreview, fmtMoney, fmtPct, parseDec } from "../../lib/equityApi";
+import { RiskPreview, fmtMoney, fmtPct, parseDec, stateLabel, stateIcon, stateTone } from "../../lib/equityApi";
 
 interface Props {
   preview: RiskPreview | null;
@@ -20,6 +20,10 @@ export function RiskIntelligenceCard({ preview, loading }: Props) {
         <div className="ee-card__header">
           <div>
             <h3 className="ee-card__title">Risk Intelligence</h3>
+          <div className={`ee-state-badge ee-state-badge--${stateTone(preview?.state_enum || "")}`}>
+            <span className="ee-state-badge__icon">{stateIcon(preview?.state_enum || "")}</span>
+            <span className="ee-state-badge__label">{stateLabel(preview?.state_enum || "")}</span>
+          </div>
             <p className="ee-card__subtitle">Computing…</p>
           </div>
         </div>
@@ -186,7 +190,19 @@ export function RiskIntelligenceCard({ preview, loading }: Props) {
         </div>
         <div className="ee-risk-floors__item">
           <div className="ee-risk-floors__label">🏔 Equity Floor</div>
-          <div className="ee-risk-floors__value">{fmtMoney(preview.f_hybrid)}</div>
+          <div className="ee-risk-floors__value">{fmtMoney(preview.f_internal)}</div>
+          <div className="ee-risk-floors__row">
+            <span className="ee-risk-floors__label">F_prop (hard rule)</span>
+            <span className="ee-risk-floors__value">{fmtMoney(preview.f_prop)}</span>
+          </div>
+          <div className="ee-risk-floors__row">
+            <span className="ee-risk-floors__label">Buffer_R</span>
+            <span className="ee-risk-floors__value">{parseDec(preview.buffer_r)?.toFixed(2) ?? "—"}</span>
+          </div>
+          <div className="ee-risk-floors__row">
+            <span className="ee-risk-floors__label">M_preserve</span>
+            <span className="ee-risk-floors__value">{parseDec(preview.m_preserve)?.toFixed(2) ?? "—"}</span>
+          </div>
         </div>
         <div className="ee-risk-floors__item">
           <div className="ee-risk-floors__label">📊 Loss Capacity</div>

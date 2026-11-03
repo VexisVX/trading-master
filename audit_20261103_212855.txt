@@ -1,0 +1,187 @@
+=== 0. ENV ===
+/mnt/g/script/trading-manager
+rg: MISSING
+sqlite3: /usr/bin/sqlite3
+cargo: /home/Fsociety/.cargo/bin/cargo
+find: /usr/bin/find
+
+=== 1. TOP-LEVEL ===
+total 100
+drwxrwxrwx 1 Fsociety Fsociety  4096 Nov  3 21:28 .
+drwxrwxrwx 1 Fsociety Fsociety  4096 Nov  3 21:26 ..
+-rwxrwxrwx 1 Fsociety Fsociety  1087 Oct 20 13:40 ARCHITECTURE.md
+-rwxrwxrwx 1 Fsociety Fsociety  5107 Nov  3 21:27 audit_20261103_212738.txt
+-rwxrwxrwx 1 Fsociety Fsociety   164 Nov  3 21:28 audit_20261103_212855.txt
+-rwxrwxrwx 1 Fsociety Fsociety 18341 Oct 20 15:23 backup.sh
+-rwxrwxrwx 1 Fsociety Fsociety  1603 Oct 20 15:32 build.sh
+drwxrwxrwx 1 Fsociety Fsociety  4096 Nov  2 18:33 dist
+-rwxrwxrwx 1 Fsociety Fsociety     0 Nov  1 21:18 [FIX]
+drwxrwxrwx 1 Fsociety Fsociety  4096 Nov  1 20:51 .git
+drwxrwxrwx 1 Fsociety Fsociety  4096 Nov  1 19:31 .github
+-rwxrwxrwx 1 Fsociety Fsociety   180 Nov  1 19:31 .gitignore
+-rwxrwxrwx 1 Fsociety Fsociety   663 Oct 22 22:42 index.html
+drwxrwxrwx 1 Fsociety Fsociety  4096 Nov  2 17:54 node_modules
+-rwxrwxrwx 1 Fsociety Fsociety   655 Oct 20 15:24 package.json
+-rwxrwxrwx 1 Fsociety Fsociety 37540 Nov  2 17:54 package-lock.json
+-rwxrwxrwx 1 Fsociety Fsociety    54 Oct 20 15:24 PACKAGING.md
+-rwxrwxrwx 1 Fsociety Fsociety  1839 Nov  3 21:28 patch.sh
+drwxrwxrwx 1 Fsociety Fsociety  4096 Oct 20 13:32 public
+-rwxrwxrwx 1 Fsociety Fsociety   378 Oct 20 13:32 README.md
+-rwxrwxrwx 1 Fsociety Fsociety  1354 Oct 20 14:39 ROADMAP.md
+drwxrwxrwx 1 Fsociety Fsociety  4096 Oct 20 13:52 src
+drwxrwxrwx 1 Fsociety Fsociety  4096 Nov  1 16:34 src-tauri
+-rwxrwxrwx 1 Fsociety Fsociety   589 Oct 20 13:32 tsconfig.json
+-rwxrwxrwx 1 Fsociety Fsociety   213 Oct 20 13:32 tsconfig.node.json
+-rwxrwxrwx 1 Fsociety Fsociety     0 Nov  1 21:18 Verify
+-rwxrwxrwx 1 Fsociety Fsociety   859 Oct 20 13:32 vite.config.ts
+drwxrwxrwx 1 Fsociety Fsociety  4096 Oct 20 13:32 .vscode
+
+=== 2. IS src-tauri THERE? ===
+YES
+src-tauri/src/analytics/breakdown.rs
+src-tauri/src/analytics/mod.rs
+src-tauri/src/commands/accounts.rs
+src-tauri/src/commands/analytics.rs
+src-tauri/src/commands/backtest.rs
+src-tauri/src/commands/backup.rs
+src-tauri/src/commands/equity.rs
+src-tauri/src/commands/goals.rs
+src-tauri/src/commands/live_calc.rs
+src-tauri/src/commands/live_presets.rs
+src-tauri/src/commands/mod.rs
+src-tauri/src/commands/news.rs
+src-tauri/src/commands/prop_firm.rs
+src-tauri/src/commands/risk.rs
+src-tauri/src/commands/risk_settings.rs
+src-tauri/src/commands/settings.rs
+src-tauri/src/commands/storage.rs
+src-tauri/src/commands/strategies.rs
+src-tauri/src/commands/trades.rs
+src-tauri/src/commands/trading_plans.rs
+src-tauri/src/db/accounts.rs
+src-tauri/src/db/app_settings.rs
+src-tauri/src/db/backtest.rs
+src-tauri/src/db/backup.rs
+src-tauri/src/db/csv_export.rs
+src-tauri/src/db/equity.rs
+src-tauri/src/db/goals.rs
+src-tauri/src/db/live_presets.rs
+src-tauri/src/db/mod.rs
+src-tauri/src/db/prop_firm.rs
+src-tauri/src/db/risk_settings.rs
+src-tauri/src/db/strategies.rs
+src-tauri/src/db/trades.rs
+src-tauri/src/db/trading_plans.rs
+src-tauri/src/domain/account.rs
+src-tauri/src/domain/mod.rs
+src-tauri/src/domain/prop_firm.rs
+src-tauri/src/domain/risk_settings.rs
+src-tauri/src/domain/strategy.rs
+src-tauri/src/domain/trade.rs
+src-tauri/src/equity/config.rs
+src-tauri/src/equity/engine.rs
+src-tauri/src/equity/error.rs
+src-tauri/src/equity/mod.rs
+src-tauri/src/equity/risk_engine.rs
+src-tauri/src/equity/sizing.rs
+src-tauri/src/equity/state.rs
+src-tauri/src/lib.rs
+src-tauri/src/main.rs
+src-tauri/src/risk/budget.rs
+src-tauri/src/risk/drawdown.rs
+src-tauri/src/risk/live_calc.rs
+src-tauri/src/risk/mod.rs
+src-tauri/src/risk/money.rs
+src-tauri/src/risk/news/calendar.rs
+src-tauri/src/risk/news/finnhub.rs
+src-tauri/src/risk/news/fmp.rs
+src-tauri/src/risk/news/marketaux.rs
+src-tauri/src/risk/news/mod.rs
+src-tauri/src/risk/position.rs
+src-tauri/src/risk/prop_firm.rs
+src-tauri/src/risk/r_multiple.rs
+src-tauri/src/risk/rr.rs
+src-tauri/src/utils/files.rs
+src-tauri/src/utils/mod.rs
+
+=== 3. RISK & EQUITY FILES (content hashes only) ===
+./src-tauri/src/equity/config.rs  (138 lines, sha1: 12924560e315)
+./src-tauri/src/equity/engine.rs  (236 lines, sha1: e533837a6ebc)
+./src-tauri/src/equity/error.rs  (39 lines, sha1: a7238d38d958)
+./src-tauri/src/equity/mod.rs  (18 lines, sha1: 23c7e9b362dc)
+./src-tauri/src/equity/risk_engine.rs  (200 lines, sha1: 7d8dd0a645e5)
+./src-tauri/src/equity/sizing.rs  (129 lines, sha1: 22bb8a10843e)
+./src-tauri/src/equity/state.rs  (181 lines, sha1: 8266530e32f2)
+./src-tauri/src/risk/budget.rs  (258 lines, sha1: 9db1f391bac0)
+./src-tauri/src/risk/drawdown.rs  (116 lines, sha1: a613d0cc130a)
+./src-tauri/src/risk/live_calc.rs  (1129 lines, sha1: 25b1c72e37f4)
+./src-tauri/src/risk/mod.rs  (54 lines, sha1: 6b5f6eddafe5)
+./src-tauri/src/risk/money.rs  (77 lines, sha1: 55f5d40f3cda)
+./src-tauri/src/risk/news/calendar.rs  (66 lines, sha1: fa56824bd291)
+./src-tauri/src/risk/news/finnhub.rs  (79 lines, sha1: 158ffa42e011)
+./src-tauri/src/risk/news/fmp.rs  (69 lines, sha1: cef1d1555eba)
+./src-tauri/src/risk/news/marketaux.rs  (173 lines, sha1: 461294536e2b)
+./src-tauri/src/risk/news/mod.rs  (38 lines, sha1: bf66c7e531f2)
+./src-tauri/src/risk/position.rs  (190 lines, sha1: dd4d25106e16)
+./src-tauri/src/risk/prop_firm.rs  (334 lines, sha1: f5f059d85bc4)
+./src-tauri/src/risk/rr.rs  (82 lines, sha1: 4ff0a966a3bf)
+./src-tauri/src/risk/r_multiple.rs  (191 lines, sha1: 31cab0ce95ad)
+
+=== 4. DB SCHEMA ===
+DB found: /home/Fsociety/.local/share/com.trading.manager/app.db (168K)
+--- tables ---
+account_goals
+accounts
+app_meta
+app_settings
+equity_config
+equity_decisions
+equity_snapshots
+live_presets
+prop_firm_rules
+risk_settings
+sqlite_sequence
+strategies
+strategy_timeframes
+strategy_versions
+trade_attachments
+trade_drafts
+trade_legs
+trade_sl_history
+trade_tags
+trades
+trading_plans
+--- version metas ---
+schema_version|19
+equity_schema_version|1
+--- equity_snapshots columns ---
+0|id|INTEGER|0||1
+1|equity|TEXT|1||0
+2|initial_balance|TEXT|1||0
+3|high_watermark|TEXT|1||0
+4|low_watermark|TEXT|1||0
+5|day_start_equity|TEXT|1||0
+6|open_portfolio_risk|TEXT|1||0
+7|daily_loss|TEXT|1||0
+8|consecutive_losses|INTEGER|1||0
+9|taken_at|TEXT|1||0
+10|created_at|TEXT|1||0
+11|phase|TEXT|0||0
+12|protected_profit|TEXT|0||0
+13|equity_floor|TEXT|0||0
+14|loss_capacity|TEXT|0||0
+15|account_id|INTEGER|0||0
+--- equity_decisions columns ---
+0|id|INTEGER|0||1
+1|snapshot_id|INTEGER|1||0
+2|allowed|INTEGER|1||0
+3|reason_kind|TEXT|1||0
+4|reason_detail|TEXT|0||0
+5|r_allowed|TEXT|0||0
+6|size|TEXT|0||0
+7|config_json|TEXT|1||0
+8|created_at|TEXT|1||0
+9|risk_reduced|INTEGER|0||0
+10|phase|TEXT|0||0
+
+=== 5. DONE — output in audit_20261103_212855.txt ===

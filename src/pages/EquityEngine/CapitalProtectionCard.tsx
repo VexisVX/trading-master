@@ -9,10 +9,11 @@ import { CapitalWaterfall } from "./CapitalWaterfall";
 
 interface Props {
   preview: RiskPreview | null;
-  refreshKey: number; // bump to re-fetch snapshots
+  refreshKey: number; // bump to re-fetch snapshots,
+  accountId?: number;
 }
 
-export function CapitalProtectionCard({ preview, refreshKey }: Props) {
+export function CapitalProtectionCard({ preview, accountId, refreshKey }: Props) {
   const [snapshots, setSnapshots] = useState<EquitySnapshotRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,14 +22,14 @@ export function CapitalProtectionCard({ preview, refreshKey }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const list = await listSnapshots(30);
+      const list = await listSnapshots(accountId, 30);
       setSnapshots(list);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [accountId]);
 
   useEffect(() => {
     load();
@@ -70,7 +71,7 @@ export function CapitalProtectionCard({ preview, refreshKey }: Props) {
             <CapitalWaterfall
               equity={preview.equity}
               initialBalance={preview.initial_balance}
-              floor={preview.f_hybrid}
+              floor={preview.f_internal}
               protectedProfit={preview.profit_retention}
               lossCapacity={preview.loss_capacity}
             />

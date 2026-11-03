@@ -141,8 +141,7 @@ pub fn compute_risk_status(
 }
 
 fn round2(v: Decimal) -> Decimal {
-    use rust_decimal::RoundingStrategy;
-    v.round_dp_with_strategy(2, RoundingStrategy::MidpointNearestEven)
+    super::money::round_money(v, 2)
 }
 
 #[cfg(test)]

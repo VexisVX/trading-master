@@ -105,7 +105,10 @@
 
 .acc-card__actions {
   display: flex;
-  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 14px;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
 }
 
 /* ============================================================
@@ -200,4 +203,400 @@
 .ca-explainer__list strong {
   color: var(--fg, #eaeaea);
   font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   CreateAccountModal — self-contained styles
+   (ca-* prefix, no dependency on EquityEngine.css)
+   ============================================================ */
+
+.ca-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.ca-modal {
+  background: var(--bg-1, #11161d);
+  border: 1px solid var(--border, #232c38);
+  border-radius: 12px;
+  max-width: 620px;
+  width: 100%;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.ca-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border, #232c38);
+  flex-shrink: 0;
+}
+
+.ca-modal__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg, #eaeaea);
+}
+
+.ca-modal__subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted, #888);
+}
+
+.ca-modal__close {
+  background: transparent;
+  border: 0;
+  color: var(--muted, #888);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.ca-modal__close:hover {
+  background: var(--bg-0, #0b0f14);
+  color: var(--fg, #eaeaea);
+}
+
+.ca-modal__body {
+  padding: 20px 22px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.ca-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border, #232c38);
+  flex-shrink: 0;
+}
+
+/* Buttons — ca-btn, self-contained, no dependency */
+.ca-btn {
+  min-height: 38px;
+  min-width: 100px;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.ca-btn--ghost {
+  background: transparent;
+  color: var(--fg, #eaeaea);
+  border-color: var(--border, #232c38);
+}
+
+.ca-btn--ghost:hover:not(:disabled) {
+  background: var(--bg-1, #0f151c);
+  border-color: var(--accent, #2dd4bf);
+  color: var(--fg, #eaeaea);
+}
+
+.ca-btn--primary {
+  background: #2dd4bf;
+  color: #0b0f14;
+  border-color: #2dd4bf;
+  font-weight: 600;
+}
+
+.ca-btn--primary:hover:not(:disabled) {
+  background: #22c1ad;
+  border-color: #22c1ad;
+  color: #0b0f14;
+}
+
+.ca-btn--primary:active:not(:disabled) {
+  background: #1ea898;
+  border-color: #1ea898;
+  color: #0b0f14;
+}
+
+.ca-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Form elements inside modal */
+.ca-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ca-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.ca-field > span {
+  color: var(--muted, #888);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ca-field input,
+.ca-field select {
+  background: var(--bg-0, #0b0f14);
+  border: 1px solid var(--border, #232c38);
+  color: var(--fg, #eaeaea);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.ca-field input:focus,
+.ca-field select:focus {
+  outline: 2px solid var(--accent, #2dd4bf);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.ca-hint {
+  color: var(--muted, #666);
+  font-style: normal;
+  font-size: 11px;
+}
+
+/* ============================================================
+   Edit Account Modal styles
+   ============================================================ */
+.ee-locked {
+  font-style: normal;
+  font-size: 11px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+.ee-field select {
+  background: var(--bg-0, #0b0f14);
+  border: 1px solid var(--border, #232c38);
+  color: var(--fg, #eaeaea);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+}
+.ee-field select:disabled,
+.ee-field input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ee-field select:focus {
+  outline: 2px solid var(--accent, #2dd4bf);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+/* ============================================================
+   Edit button in account card
+   ============================================================ */
+.acc-card__edit {
+  background: transparent;
+  border: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  margin-left: 6px;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+  opacity: 0.6;
+}
+.acc-card__edit:hover {
+  background: var(--bg-3);
+  color: var(--accent);
+  opacity: 1;
+}
+.acc-card__name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ============================================================
+   Action buttons in account card
+   ============================================================ */
+.acc-card__action-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--bg-2, #0f151c);
+  border: 1px solid var(--border, #232c38);
+  color: var(--text-1, #aaa);
+  padding: 10px 16px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.acc-card__action-btn:hover {
+  background: var(--bg-3, #161d26);
+  border-color: var(--accent, #2dd4bf);
+  color: var(--accent, #2dd4bf);
+}
+
+/* ============================================================
+   Goals button in card header (next to edit)
+   ============================================================ */
+.acc-card__goals {
+  font-size: 13px;
+  margin-left: 2px;
+}
+.acc-card__goals:hover {
+  background: rgba(45, 212, 191, 0.15);
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* ============================================================
+   Backup toast notification
+   ============================================================ */
+
+@keyframes acc-toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+
+
+
+
+
+/* Backup — رنگ تم، بدون آیکون */
+
+
+
+
+/* Delete — replaced below */
+
+/* ============================================================
+   Backup toast notification
+   ============================================================ */
+
+@keyframes acc-toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   Footer actions — Backup + Delete
+   ============================================================ */
+.acc-card__footer-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+
+
+/* Delete — قرمز از اول، hover پررنگ‌تر */
+.acc-card__delete-btn {
+  padding: 7px 14px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+  background: rgba(255, 107, 107, 0.08);
+  color: #ff6b6b;
+  border: 1px solid rgba(255, 107, 107, 0.35);
+}
+.acc-card__delete-btn:hover {
+  background: rgba(255, 107, 107, 0.18);
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.15);
+}
+.acc-card__delete-btn:active {
+  background: rgba(255, 107, 107, 0.28);
+}
+
+/* ============================================================
+   Backup toast notification
+   ============================================================ */
+.acc-card__toast {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  word-break: break-all;
+  animation: acc-toast-in 0.2s ease-out;
+}
+@keyframes acc-toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.acc-card__toast.is-ok {
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  color: #4ade80;
+}
+.acc-card__toast.is-err {
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  color: #ff6b6b;
+}
+
+/* Backup — رنگ تم، بدون فیروزه‌ای */
+.acc-card__backup-btn {
+  padding: 7px 14px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+  background: transparent;
+  color: var(--text-1, #aaa);
+  border: 1px solid var(--border);
+}
+.acc-card__backup-btn:hover:not(:disabled) {
+  background: var(--bg-2);
+  border-color: var(--border-strong, #3a4552);
+  color: var(--text-0);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.04);
+}
+.acc-card__backup-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

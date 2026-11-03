@@ -5,6 +5,7 @@ import {
   decisionVerdict,
   fmtMoney,
   humanizeReason,
+  stateLabel,
   verdictIcon,
   verdictLabel,
   verdictTone,
@@ -90,6 +91,7 @@ export function AllDecisionsModal({ decisions, onClose }: Props) {
                   <th>Risk</th>
                   <th>Size</th>
                   <th>Phase</th>
+                  <th>State</th>
                 </tr>
               </thead>
               <tbody>
@@ -114,6 +116,7 @@ export function AllDecisionsModal({ decisions, onClose }: Props) {
                         {d.size !== null ? parseFloat(d.size).toFixed(2) : "—"}
                       </td>
                       <td className="mono ee-muted">{d.phase || "—"}</td>
+                      <td className="mono ee-muted">{stateLabel((d as any).state || "")}</td>
                     </tr>
                   );
                 })}

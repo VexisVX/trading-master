@@ -108,6 +108,92 @@ pub fn compute_position_size(input: &PositionSizeInput) -> Result<PositionSizeRe
     })
 }
 
+
+// ============================================================
+// S7: size from R_allowed directly + instrument step/min/max
+// ============================================================
+
+#[derive(Debug, Clone)]
+pub struct SizeFromAllowedInput {
+    pub r_allowed: Decimal,
+    pub entry_price: Decimal,
+    pub stop_price: Decimal,
+    pub tick_size: Decimal,
+    pub tick_value: Decimal,
+    pub contract_size: Decimal,
+    pub commission_per_lot: Decimal,
+    pub lot_step: Decimal,
+    pub min_qty: Decimal,
+    pub max_qty: Decimal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SizeFromAllowedResult {
+    pub r_allowed: Decimal,
+    pub lots: Decimal,
+    pub actual_risk: Decimal,
+    pub clamped_to_min: bool,
+    pub clamped_to_max: bool,
+    pub rejected_below_min: bool,
+}
+
+pub fn size_from_allowed(
+    i: &SizeFromAllowedInput,
+) -> Result<SizeFromAllowedResult, PositionError> {
+    if i.r_allowed <= Decimal::ZERO {
+        return Err(PositionError::NonPositiveRisk);
+    }
+    if i.tick_size <= Decimal::ZERO {
+        return Err(PositionError::NonPositiveTickSize);
+    }
+    if i.tick_value <= Decimal::ZERO {
+        return Err(PositionError::NonPositiveTickValue);
+    }
+    if i.contract_size <= Decimal::ZERO {
+        return Err(PositionError::NonPositiveContractSize);
+    }
+    let stop_distance = (i.entry_price - i.stop_price).abs();
+    if stop_distance <= Decimal::ZERO {
+        return Err(PositionError::NonPositiveStop);
+    }
+
+    let stop_ticks = safe_div(stop_distance, i.tick_size)?;
+    let loss_per_lot = round_money(stop_ticks * i.tick_value + i.commission_per_lot, 2);
+    if loss_per_lot <= Decimal::ZERO {
+        return Err(PositionError::NonPositiveStop);
+    }
+
+    let raw = safe_div(i.r_allowed, loss_per_lot)?;
+    let step = if i.lot_step > Decimal::ZERO { i.lot_step } else { Decimal::new(1, 2) };
+    // Round DOWN to step.
+    let steps = (raw / step).round_dp_with_strategy(0, rust_decimal::RoundingStrategy::ToZero);
+    let mut lots = steps * step;
+
+    // Apply min/max bounds.
+    let mut clamped_min = false;
+    let mut clamped_max = false;
+    if i.min_qty > Decimal::ZERO && lots < i.min_qty {
+        lots = i.min_qty;
+        clamped_min = true;
+    }
+    if i.max_qty > Decimal::ZERO && lots > i.max_qty {
+        lots = i.max_qty;
+        clamped_max = true;
+    }
+
+    let actual_risk = round_money(lots * loss_per_lot, 2);
+    let rejected_below_min = actual_risk > i.r_allowed && clamped_min;
+
+    Ok(SizeFromAllowedResult {
+        r_allowed: i.r_allowed,
+        lots,
+        actual_risk,
+        clamped_to_min: clamped_min,
+        clamped_to_max: clamped_max,
+        rejected_below_min,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +272,96 @@ mod tests {
         let rs = compute_position_size(&short).unwrap();
         assert_eq!(rl.lots, rs.lots);
         assert_eq!(rl.stop_distance, rs.stop_distance);
+    }
+
+    #[test]
+    fn size_from_allowed_basic() {
+        // R = 100, stop 50 ticks, tick 1 → loss_per_lot = 50
+        // lots = 100/50 = 2.00
+        let r = size_from_allowed(&SizeFromAllowedInput {
+            r_allowed: dec!(100),
+            entry_price: dec!(1.1000),
+            stop_price: dec!(1.0950),
+            tick_size: dec!(0.0001),
+            tick_value: dec!(1),
+            contract_size: dec!(100000),
+            commission_per_lot: dec!(0),
+            lot_step: dec!(0.01),
+            min_qty: dec!(0.01),
+            max_qty: dec!(100),
+        }).unwrap();
+        assert_eq!(r.lots, dec!(2.00));
+        assert_eq!(r.actual_risk, dec!(100.00));
+    }
+
+    #[test]
+    fn size_from_allowed_lot_step_rounds_down() {
+        // R = 100, loss_per_lot = 60 → raw = 1.6667 → step 0.05 → 1.65
+        let r = size_from_allowed(&SizeFromAllowedInput {
+            r_allowed: dec!(100),
+            entry_price: dec!(1.1000),
+            stop_price: dec!(1.0940),
+            tick_size: dec!(0.0001),
+            tick_value: dec!(1),
+            contract_size: dec!(100000),
+            commission_per_lot: dec!(0),
+            lot_step: dec!(0.05),
+            min_qty: dec!(0),
+            max_qty: dec!(0),
+        }).unwrap();
+        assert_eq!(r.lots, dec!(1.65));
+    }
+
+    #[test]
+    fn size_from_allowed_min_qty() {
+        let r = size_from_allowed(&SizeFromAllowedInput {
+            r_allowed: dec!(1),
+            entry_price: dec!(1.1000),
+            stop_price: dec!(1.0950),
+            tick_size: dec!(0.0001),
+            tick_value: dec!(1),
+            contract_size: dec!(100000),
+            commission_per_lot: dec!(0),
+            lot_step: dec!(0.01),
+            min_qty: dec!(0.10),
+            max_qty: dec!(0),
+        }).unwrap();
+        assert_eq!(r.lots, dec!(0.10));
+        assert!(r.clamped_to_min);
+        assert!(r.rejected_below_min);
+    }
+
+    #[test]
+    fn size_from_allowed_max_qty() {
+        let r = size_from_allowed(&SizeFromAllowedInput {
+            r_allowed: dec!(10000),
+            entry_price: dec!(1.1000),
+            stop_price: dec!(1.0950),
+            tick_size: dec!(0.0001),
+            tick_value: dec!(1),
+            contract_size: dec!(100000),
+            commission_per_lot: dec!(0),
+            lot_step: dec!(0.01),
+            min_qty: dec!(0),
+            max_qty: dec!(1.00),
+        }).unwrap();
+        assert_eq!(r.lots, dec!(1.00));
+        assert!(r.clamped_to_max);
+    }
+
+    #[test]
+    fn size_from_allowed_rejects_zero_r() {
+        assert!(size_from_allowed(&SizeFromAllowedInput {
+            r_allowed: Decimal::ZERO,
+            entry_price: dec!(1.1000),
+            stop_price: dec!(1.0950),
+            tick_size: dec!(0.0001),
+            tick_value: dec!(1),
+            contract_size: dec!(100000),
+            commission_per_lot: dec!(0),
+            lot_step: dec!(0.01),
+            min_qty: dec!(0),
+            max_qty: dec!(0),
+        }).is_err());
     }
 }

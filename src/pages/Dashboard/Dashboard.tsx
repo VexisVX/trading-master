@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { LineChart } from "../../components/charts/LineChart";
 import { BarChart } from "../../components/charts/BarChart";
 import { Donut } from "../../components/charts/Donut";
-import { getSummary, Summary, TradeRDetail } from "../../lib/analyticsApi";
-import { getGoals, AccountGoals } from "../../lib/goalsApi";
+import { getSummary, getPeriodPnl, Summary, TradeRDetail, PeriodPnl } from "../../lib/analyticsApi";
+import { getGoals, setGoals, AccountGoals } from "../../lib/goalsApi";
+
 import { getRiskStatus, RiskStatus } from "../../lib/riskSettingsApi";
 import { getPropFirmStatus, PropFirmStatus } from "../../lib/propFirmApi";
 import { getActiveAccountId } from "../../lib/accountsApi";
@@ -48,20 +49,23 @@ const MOTIVATION_MESSAGES = [
 // ============================================================
 export function Dashboard() {
   const [s, setS] = useState<Summary | null>(null);
-  const [goals, setGoals] = useState<AccountGoals | null>(null);
-  const [risk, setRisk] = useState<RiskStatus | null>(null);
+const [risk, setRisk] = useState<RiskStatus | null>(null);
   const [pf, setPf] = useState<PropFirmStatus | null>(null);
+  const [goals, setGoalsState] = useState<AccountGoals | null>(null);
+  const [periodPnl, setPeriodPnl] = useState<PeriodPnl | null>(null);
+  const [showGoalsEdit, setShowGoalsEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
     setError(null);
     try {
-      const summary = await getSummary();
-      setS(summary);
       const accId = await getActiveAccountId();
-      try { setGoals(await getGoals(accId)); } catch { setGoals(null); }
-      try { setRisk(await getRiskStatus(accId)); } catch { setRisk(null); }
+      const summary = await getSummary(accId);
+      setS(summary);
+      try { setGoalsState(await getGoals(accId)); } catch { setGoalsState(null); }
+      try { setPeriodPnl(await getPeriodPnl(accId)); } catch { setPeriodPnl(null); }
+try { setRisk(await getRiskStatus(accId)); } catch { setRisk(null); }
       try { setPf(await getPropFirmStatus(accId)); } catch { setPf(null); }
     } catch (e) {
       setError(String(e));
@@ -74,6 +78,13 @@ export function Dashboard() {
       await load();
       setLoading(false);
     })();
+  }, []);
+
+  // ★ Listen to account changes — reload page for fresh data
+  useEffect(() => {
+    const handler = () => window.location.reload();
+    window.addEventListener("activeAccountChanged", handler);
+    return () => window.removeEventListener("activeAccountChanged", handler);
   }, []);
 
   if (loading) return <div className="dash"><div className="card">Loading…</div></div>;
@@ -177,7 +188,12 @@ export function Dashboard() {
       {/* Motivation + Goals */}
       <section className="dash__row dash__row--2">
         <MotivationCard netPnl={s.net_pnl} closedTrades={s.closed_trades} />
-        {goals && <GoalsCard goals={goals} netPnl={s.net_pnl} initialBalance={s.initial_balance} />}
+        <GoalsCard
+          goals={goals}
+          periodPnl={periodPnl}
+          risk={risk}
+          onEdit={() => setShowGoalsEdit(true)}
+        />
       </section>
 
       {/* Weekday Performance */}
@@ -261,6 +277,18 @@ export function Dashboard() {
           </table>
         )}
       </section>
+
+      {showGoalsEdit && (
+        <GoalsEditModal
+          current={goals}
+          defaultDaily={risk ? (Number(risk.settings.daily_loss_limit_pct) * 2).toFixed(1) : "2"}
+          onClose={() => setShowGoalsEdit(false)}
+          onSaved={async () => {
+            setShowGoalsEdit(false);
+            await load();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -343,55 +371,6 @@ function MotivationCard({ netPnl, closedTrades }: {
 // ============================================================
 // Goals Card
 // ============================================================
-function GoalsCard({ goals, netPnl, initialBalance }: {
-  goals: AccountGoals;
-  netPnl: string;
-  initialBalance: string;
-}) {
-  const pnl = Number(netPnl);
-  const bal = Number(initialBalance);
-  const pnlPct = bal > 0 ? (pnl / bal) * 100 : 0;
-
-  const targets = [
-    { label: "Daily", target: Number(goals.daily_target_pct), period: "today" },
-    { label: "Weekly", target: Number(goals.weekly_target_pct), period: "this week" },
-    { label: "Monthly", target: Number(goals.monthly_target_pct), period: "this month" },
-  ];
-
-  return (
-    <div className="card goals-card">
-      <div className="card__head">
-        <h3>Goals</h3>
-        <span className={`card__badge ${pnlPct >= targets[2].target ? "ok" : ""}`}>
-          {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}% this month
-        </span>
-      </div>
-      <div className="goals-list">
-        {targets.map((t) => {
-          const pct = t.target > 0 ? Math.min(100, Math.max(0, (pnlPct / t.target) * 100)) : 0;
-          const done = pct >= 100;
-          const positive = pnlPct >= 0;
-          return (
-            <div key={t.label} className="goal-bar">
-              <div className="goal-bar__head">
-                <span className="goal-bar__label">{t.label} target</span>
-                <span className={`mono ${positive ? "pos" : "neg"}`}>
-                  {positive ? "+" : ""}{pnlPct.toFixed(2)}% / {t.target}%
-                </span>
-              </div>
-              <div className="goal-bar__track">
-                <div className={`goal-bar__fill ${done ? "is-done" : ""} ${!positive ? "is-negative" : ""}`} style={{ width: `${pct}%` }} />
-              </div>
-              <div className="goal-bar__hint">
-                {done ? "✓ Target reached" : `${pct.toFixed(0)}% toward ${t.period} target`}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 // ============================================================
 // Weekday Performance
@@ -589,5 +568,214 @@ function SessionHeatmapCard({ trades }: { trades: TradeRDetail[] }) {
         </div>
       )}
     </section>
+  );
+}
+
+// ============================================================
+// Goals Card — 3 progress bars for daily/weekly/monthly
+// ============================================================
+function GoalsCard({
+  goals,
+  periodPnl,
+  risk,
+  onEdit,
+}: {
+  goals: AccountGoals | null;
+  periodPnl: PeriodPnl | null;
+  risk: RiskStatus | null;
+  onEdit: () => void;
+}) {
+  // Auto-default from risk if no goals saved
+  const autoDaily = risk
+    ? (Number(risk.settings.daily_loss_limit_pct) * 2).toFixed(1)
+    : "2";
+  const autoWeekly = (Number(autoDaily) * 3).toFixed(1);
+  const autoMonthly = (Number(autoWeekly) * 1.33).toFixed(1);
+
+  const dailyTarget = goals ? Number(goals.daily_target_pct) : Number(autoDaily);
+  const weeklyTarget = goals ? Number(goals.weekly_target_pct) : Number(autoWeekly);
+  const monthlyTarget = goals ? Number(goals.monthly_target_pct) : Number(autoMonthly);
+
+  const dailyActual = periodPnl ? Number(periodPnl.daily_pct) : 0;
+  const weeklyActual = periodPnl ? Number(periodPnl.weekly_pct) : 0;
+  const monthlyActual = periodPnl ? Number(periodPnl.monthly_pct) : 0;
+
+  const renderBar = (
+    label: string,
+    actual: number,
+    target: number,
+    pnlValue: string | undefined,
+    period: string,
+  ) => {
+    const pct = target > 0 ? Math.min(100, Math.max(0, (actual / target) * 100)) : 0;
+    const done = pct >= 100;
+    const positive = actual >= 0;
+    return (
+      <div className="goal-bar" key={label}>
+        <div className="goal-bar__head">
+          <span className="goal-bar__label">{label}</span>
+          <span className={`mono ${positive ? "pos" : "neg"}`}>
+            {positive ? "+" : ""}
+            {actual.toFixed(2)}% / {target.toFixed(1)}%
+            {pnlValue && (
+              <span className="goal-bar__amount dim">
+                {" "}
+                ({Number(pnlValue) >= 0 ? "+" : ""}
+                {fmtMoney(pnlValue)})
+              </span>
+            )}
+          </span>
+        </div>
+        <div className="goal-bar__track">
+          <div
+            className={`goal-bar__fill ${done ? "is-done" : ""} ${
+              !positive ? "is-negative" : ""
+            }`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <div className="goal-bar__hint">
+          {done
+            ? `✓ ${period} target reached`
+            : `${pct.toFixed(0)}% toward ${period} target`}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="card goals-card">
+      <div className="card__head">
+        <h3>Goals</h3>
+        <button
+          className="btn btn--ghost btn--small"
+          onClick={onEdit}
+          title="Edit target percentages"
+        >
+          ⚙ Edit
+        </button>
+      </div>
+      {!goals && (
+        <div className="goals-card__default-hint">
+          <span className="dim">
+            💡 Using auto-defaults from your risk settings:
+          </span>
+        </div>
+      )}
+      <div className="goals-list">
+        {renderBar("Daily", dailyActual, dailyTarget, periodPnl?.daily_pnl, "today")}
+        {renderBar("Weekly", weeklyActual, weeklyTarget, periodPnl?.weekly_pnl, "this week")}
+        {renderBar("Monthly", monthlyActual, monthlyTarget, periodPnl?.monthly_pnl, "this month")}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Goals Edit Modal
+// ============================================================
+function GoalsEditModal({
+  current,
+  defaultDaily,
+  onClose,
+  onSaved,
+}: {
+  current: AccountGoals | null;
+  defaultDaily: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [daily, setDaily] = useState(
+    current ? current.daily_target_pct : defaultDaily
+  );
+  const [weekly, setWeekly] = useState(
+    current
+      ? current.weekly_target_pct
+      : (Number(defaultDaily) * 3).toFixed(1)
+  );
+  const [monthly, setMonthly] = useState(
+    current
+      ? current.monthly_target_pct
+      : (Number(defaultDaily) * 4).toFixed(1)
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setError(null);
+    setBusy(true);
+    try {
+      const accId = await getActiveAccountId();
+      await setGoals(accId, {
+        daily_target_pct: daily,
+        weekly_target_pct: weekly,
+        monthly_target_pct: monthly,
+      });
+      onSaved();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="modal"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 420 }}
+      >
+        <h3>Edit Goals</h3>
+        <p className="dim">
+          Target percentages for daily, weekly, and monthly profit.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span>Daily target (%)</span>
+            <input
+              className="mono"
+              value={daily}
+              onChange={(e) => setDaily(e.target.value)}
+              placeholder="2.0"
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span>Weekly target (%)</span>
+            <input
+              className="mono"
+              value={weekly}
+              onChange={(e) => setWeekly(e.target.value)}
+              placeholder="6.0"
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span>Monthly target (%)</span>
+            <input
+              className="mono"
+              value={monthly}
+              onChange={(e) => setMonthly(e.target.value)}
+              placeholder="8.0"
+            />
+          </label>
+        </div>
+
+        {error && (
+          <div className="card card--error" style={{ marginTop: 12 }}>
+            {error}
+          </div>
+        )}
+
+        <div className="modal__actions">
+          <button className="btn btn--ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button className="btn btn--primary" onClick={save} disabled={busy}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

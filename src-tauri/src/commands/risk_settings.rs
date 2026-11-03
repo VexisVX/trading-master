@@ -37,7 +37,7 @@ pub fn risk_status(state: State<AppState>, account_id: i64) -> Result<String, St
         .map_err(|e| e.to_string())?;
     let initial = Decimal::from_str(&balance_str).map_err(|e| e.to_string())?;
 
-    let trades = trades_db::list_trades(&conn, 500, 0).map_err(|e| e.to_string())?;
+    let trades = trades_db::list_trades(&conn, None, 500, 0).map_err(|e| e.to_string())?;
 
     // Current equity = initial balance + realized P&L of all closed trades.
     // (Open risk is not subtracted — it's potential, not realized.)
