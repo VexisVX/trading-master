@@ -195,7 +195,7 @@ label > span:first-child {
 
 @media (prefers-reduced-motion: reduce) {
   .fade-in { animation: none; }
-  * { transition: none !important; }
+  * { transition: none ; }
 }
 
 /* ============================================================
@@ -496,15 +496,15 @@ select:focus {
 /* Respect reduced motion — turn everything off, snap state only */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
+    animation-duration: 0.001ms ;
+    animation-iteration-count: 1 ;
+    transition-duration: 0.001ms ;
+    scroll-behavior: auto ;
   }
   .pop-in, .fade-in, .stagger > *, .modal, .modal-backdrop {
-    animation: none !important;
-    opacity: 1 !important;
-    transform: none !important;
+    animation: none ;
+    opacity: 1 ;
+    transform: none ;
   }
 }
 
@@ -547,19 +547,19 @@ select:focus {
 .motion-off *,
 .motion-off *::before,
 .motion-off *::after {
-  animation-duration: 0ms !important;
-  animation-delay: 0ms !important;
-  transition-duration: 0ms !important;
-  transition-delay: 0ms !important;
+  animation-duration: 0ms ;
+  animation-delay: 0ms ;
+  transition-duration: 0ms ;
+  transition-delay: 0ms ;
 }
 
 .motion-reduced *,
 .motion-reduced *::before,
 .motion-reduced *::after {
-  animation-duration: 120ms !important;
-  animation-delay: 0ms !important;
-  transition-duration: 100ms !important;
-  transition-delay: 0ms !important;
+  animation-duration: 120ms ;
+  animation-delay: 0ms ;
+  transition-duration: 100ms ;
+  transition-delay: 0ms ;
 }
 
 /* Base font-size fallback */
@@ -717,3 +717,119 @@ input[type="datetime-local"]::-webkit-datetime-edit-text {
   border-color: var(--accent, #2dd4bf);
   background: var(--accent-soft, rgba(45, 212, 191, 0.12));
 }
+
+
+/* ============================================================
+ * LIGHT THEME OVERRIDES
+ * ============================================================ */
+
+[data-theme="light"] {
+  --bg-0: #fafafa;
+  --bg-1: #ffffff;
+  --bg-2: #f3f4f6;
+  --bg-3: #e5e7eb;
+  --border: #d1d5db;
+  --text-0: #111827;
+  --text-1: #374151;
+  --text-2: #4b5563;
+  --accent: #0891b2;
+  --accent-dim: #0e7490;
+  --accent-soft: rgba(8, 145, 178, 0.12);
+  --danger: #dc2626;
+  --warning: #d97706;
+  --success: #059669;
+  color-scheme: light;
+}
+
+/* Override any explicit dark-theme text colors in light mode */
+[data-theme="light"] .ee-card,
+[data-theme="light"] .ee-card *,
+[data-theme="light"] .ee-modal,
+[data-theme="light"] .ee-modal *,
+[data-theme="light"] .ee-profile-section,
+[data-theme="light"] .ee-profile-section * {
+  color: inherit;
+}
+
+[data-theme="light"] .ee-card__title,
+[data-theme="light"] .ee-modal__title,
+[data-theme="light"] .ee-profile-section .section-title,
+[data-theme="light"] .ee-result__value,
+[data-theme="light"] .ee-trace__value,
+[data-theme="light"] .ee-risk-floors__value,
+[data-theme="light"] .ee-simple-field__label,
+[data-theme="light"] .ee-simple-field__value,
+[data-theme="light"] .ee-profile-derived__title,
+[data-theme="light"] .ee-profile-derived__table td,
+[data-theme="light"] .ee-card table td,
+[data-theme="light"] .ee-modal table td {
+  color: var(--text-0, #111827) !important;
+}
+
+[data-theme="light"] .ee-card__subtitle,
+[data-theme="light"] .ee-modal__subtitle,
+[data-theme="light"] .ee-muted,
+[data-theme="light"] .ee-hint,
+[data-theme="light"] .ee-trace__label,
+[data-theme="light"] .ee-risk-floors__label,
+[data-theme="light"] .ee-simple-field__hint,
+[data-theme="light"] .ee-simple-field__example,
+[data-theme="light"] .ee-profile-row__hint,
+[data-theme="light"] .ee-profile-section .settings__hint,
+[data-theme="light"] .ee-profile-derived__table td:first-child,
+[data-theme="light"] .ee-field em,
+[data-theme="light"] [class*="__hint"],
+[data-theme="light"] [class*="__label"],
+[data-theme="light"] [class*="muted"] {
+  color: var(--text-1, #374151) !important;
+}
+
+/* Fix account status card text (account name, refresh, snapshot) */
+[data-theme="light"] .ee-status,
+[data-theme="light"] .ee-status *,
+[data-theme="light"] .ee-account-status,
+[data-theme="light"] .ee-account-status * {
+  color: var(--text-0, #111827) !important;
+}
+
+[data-theme="light"] .ee-status__label,
+[data-theme="light"] .ee-status__hint,
+[data-theme="light"] .ee-account-status__hint {
+  color: var(--text-1, #374151) !important;
+}
+
+/* Inputs in light mode */
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  background-color: var(--bg-1, #ffffff) !important;
+  color: var(--text-0, #111827) !important;
+  border-color: var(--border, #d1d5db) !important;
+}
+
+[data-theme="light"] .ee-profile-row select,
+[data-theme="light"] .ee-profile-row input[type="number"],
+[data-theme="light"] .ee-profile-row input[type="text"] {
+  background-color: var(--bg-2, #f3f4f6) !important;
+  color: var(--text-0, #111827) !important;
+  border-color: var(--border, #d1d5db) !important;
+}
+
+/* Derived values block in light mode */
+[data-theme="light"] .ee-profile-derived {
+  background: var(--bg-2, #f3f4f6) !important;
+  border-color: var(--border, #d1d5db) !important;
+  color: var(--text-0, #111827) !important;
+}
+
+[data-theme="light"] .ee-profile-derived__title {
+  color: var(--accent, #0891b2) !important;
+}
+
+/* Buttons in light mode */
+[data-theme="light"] .ee-btn--ghost {
+  background: var(--bg-2, #f3f4f6) !important;
+  color: var(--text-0, #111827) !important;
+  border-color: var(--border, #d1d5db) !important;
+}
+

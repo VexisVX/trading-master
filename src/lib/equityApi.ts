@@ -39,12 +39,16 @@ export interface SnapshotCreateInput {
 }
 
 export interface TradeProposal {
+  // New (PHASE 2.1): symbol drives instrument lookup
+  symbol?: string | null;
   entry: string;
   stop: string;
   take_profit: string | null;
-  contract_multiplier: string;
-  commission_per_unit: string;
-  slippage_buffer: string;
+  // legacy (only used if allow_legacy=true)
+  allow_legacy?: boolean;
+  contract_multiplier?: string;
+  commission_per_unit?: string;
+  slippage_buffer?: string;
 }
 
 /** Rust serializes DecisionReason as { kind, detail? } (serde tagged enum). */
@@ -96,6 +100,9 @@ export interface DecisionOut {
   f_prop: string;
   snapshot_id: number | null;
   risk_detail: RiskDetail | null;
+  sizing_source?: string;
+  actual_risk?: string | null;
+  instrument_symbol?: string | null;
 }
 
 export interface PreEvalResult {
@@ -166,27 +173,47 @@ export function verdictTone(v: DecisionVerdict): string {
 
 export interface EquityConfig {
   r0: string;
-  r_min: string;
-  delta_r: string;
-  dd_1: string;
-  dd_2: string;
-  dd_3: string;
-  m_dd_1: string;
-  m_dd_2: string;
-  m_dd_3: string;
-  m_dd_4: string;
-  m_loss_table: string;
-  n_max: number;
-  q_retention: string;
-  d_trailing: string;
+
+  // v2 protection (smoothstep)
+  profit_protect_activation: string;
+  profit_protect_full: string;
+  max_profit_retention: string;
+  trailing_dd_pct: string;
+
+  // prop budget (legacy D_prop)
   d_prop: string;
+
+  // risk capacity
   alpha: string;
   daily_loss_limit: string;
   r_portfolio_max: string;
   r_prop_max: string;
-  mu_max: string;
+
+  // execution buffer
+  execution_buffer_pct: string;
+
+  // recovery
+  recovery_probe_pct: string;
+
+  // snapshot policy
   max_snapshot_age_hours: number;
-  recovery_target: string;
+
+  // legacy fields kept (accepted but ignored)
+  r_min?: string;
+  delta_r?: string;
+  dd_1?: string;
+  dd_2?: string;
+  dd_3?: string;
+  m_dd_1?: string;
+  m_dd_2?: string;
+  m_dd_3?: string;
+  m_dd_4?: string;
+  m_loss_table?: string;
+  n_max?: number;
+  q_retention?: string;
+  d_trailing?: string;
+  mu_max?: string;
+  recovery_target?: string;
 }
 
 /** Derived account status — computed from snapshot for display. */
@@ -581,33 +608,106 @@ export function isBlockingState(s: string): boolean {
 }
 
 /* ============================================================
+ *  ACCOUNT PROFILE (S14)
+ * ============================================================ */
+
+export type AccountType = "personal" | "prop_firm";
+
+export interface AccountProfile {
+  account_id: number;
+  account_type: AccountType;
+  profit_target_pct: string;
+  max_dd_pct: string;
+  profit_protect_activation: string;
+  profit_protect_full: string;
+  max_profit_retention: string;
+  trailing_dd_pct: string;
+}
+
+export interface ProfileInput {
+  account_type: AccountType;
+  profit_target_pct: string;
+  max_dd_pct: string;
+}
+
+export async function getAccountProfile(accountId: number): Promise<AccountProfile | null> {
+  return invoke<AccountProfile | null>("equity_profile_get", { accountId });
+}
+
+export async function setAccountProfile(
+  accountId: number,
+  input: ProfileInput
+): Promise<AccountProfile> {
+  return invoke<AccountProfile>("equity_profile_set", { accountId, input });
+}
+
+
+
+/* ============================================================
+ * INSTRUMENTS (PHASE 2.1)
+ * ============================================================ */
+
+export type SpecSource = "verified" | "user_entered" | "estimated";
+
+export interface Instrument {
+  symbol: string;
+  currency: string;
+  tick_size: string;
+  tick_value: string;
+  contract_size: string;
+  min_qty: string;
+  max_qty: string;
+  lot_step: string;
+  commission_per_lot: string;
+  slippage_per_unit: string;
+  spec_source: SpecSource;
+}
+
+export interface InstrumentInput {
+  symbol: string;
+  currency: string;
+  tick_size: string;
+  tick_value: string;
+  contract_size: string;
+  min_qty: string;
+  max_qty: string;
+  lot_step: string;
+  commission_per_lot: string;
+  slippage_per_unit: string;
+  spec_source: SpecSource;
+}
+
+export async function listInstruments(): Promise<Instrument[]> {
+  return invoke<Instrument[]>("equity_instruments_list");
+}
+
+export async function upsertInstrument(input: InstrumentInput): Promise<void> {
+  return invoke<void>("equity_instrument_upsert", { input });
+}
+
+export async function deleteInstrument(symbol: string): Promise<void> {
+  return invoke<void>("equity_instrument_delete", { symbol });
+}
+
+/* ============================================================
  *  DEFAULTS
  * ============================================================ */
 
 export function defaultConfig(): EquityConfig {
   return {
     r0: "0.01",
-    r_min: "0.0025",
-    delta_r: "0.005",
-    dd_1: "0.05",
-    dd_2: "0.10",
-    dd_3: "0.20",
-    m_dd_1: "0.5",
-    m_dd_2: "0.25",
-    m_dd_3: "0.1",
-    m_dd_4: "0.05",
-    m_loss_table: "1.0,1.0,0.75,0.5,0.25,0,0",
-    n_max: 5,
-    q_retention: "0.3",
-    d_trailing: "0.1",
-    d_prop: "0.06",
+    profit_protect_activation: "0.05",
+    profit_protect_full: "0.10",
+    max_profit_retention: "0.40",
+    trailing_dd_pct: "0.10",
+    d_prop: "0",
     alpha: "0.5",
-    daily_loss_limit: "0.03",
-    r_portfolio_max: "0.06",
-    r_prop_max: "0.02",
-    mu_max: "1.0",
+    daily_loss_limit: "0",
+    r_portfolio_max: "0",
+    r_prop_max: "0",
+    execution_buffer_pct: "0.001",
+    recovery_probe_pct: "0.25",
     max_snapshot_age_hours: 24,
-    recovery_target: "0.5",
   };
 }
 

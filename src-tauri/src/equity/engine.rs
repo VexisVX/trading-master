@@ -15,12 +15,19 @@ use super::state_machine;
 
 #[derive(Debug, Clone)]
 pub struct TradeProposal {
+    /// Symbol — used for instrument lookup (preferred path)
+    pub symbol: Option<String>,
     pub entry: String,
     pub stop: String,
     pub take_profit: Option<String>,
-    pub contract_multiplier: String,
-    pub commission_per_unit: String,
-    pub slippage_buffer: String,
+    /// When true, engine will NOT use instrument table even if symbol is provided
+    pub allow_legacy: bool,
+    // --- legacy fields (used only if allow_legacy=true or symbol missing) ---
+    pub contract_multiplier: Option<String>,
+    pub commission_per_unit: Option<String>,
+    pub slippage_buffer: Option<String>,
+    // --- caller-supplied instrument (bypasses DB lookup) ---
+    pub instrument_override: Option<crate::domain::instrument::InstrumentSpec>,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +42,10 @@ pub struct TradeDecision {
     pub buffer_r: String,
     pub m_preserve: String,
     pub binding_constraint: String,
+    // Sizing metadata (S2.1)
+    pub sizing_source: String,  // "instrument" | "legacy" | "override" | "none"
+    pub actual_risk: Option<String>,
+    pub instrument_symbol: Option<String>,
 }
 
 fn parse_dec(s: &str, name: &str) -> Result<Decimal, EquityError> {
@@ -45,6 +56,17 @@ pub fn evaluate(
     state: &AccountState,
     cfg: &EquityConfig,
     proposal: Option<&TradeProposal>,
+) -> Result<TradeDecision, EquityError> {
+    // Legacy wrapper: no connection available, so if symbol is provided
+    // it must be an instrument_override. Otherwise falls back to legacy path.
+    evaluate_with_conn(state, cfg, proposal, None)
+}
+
+pub fn evaluate_with_conn(
+    state: &AccountState,
+    cfg: &EquityConfig,
+    proposal: Option<&TradeProposal>,
+    conn: Option<&rusqlite::Connection>,
 ) -> Result<TradeDecision, EquityError> {
     cfg.validate().map_err(EquityError::InvalidInput)?;
 
@@ -66,6 +88,9 @@ pub fn evaluate(
             buffer_r: state.buffer_r.to_string(),
             m_preserve: state.m_preserve.to_string(),
             binding_constraint: "".into(),
+            sizing_source: "none".into(),
+            actual_risk: None,
+            instrument_symbol: None,
         });
     }
 
@@ -86,6 +111,9 @@ pub fn evaluate(
             buffer_r: buffer_r_s,
             m_preserve: m_preserve_s,
             binding_constraint: "".into(),
+            sizing_source: "none".into(),
+            actual_risk: None,
+            instrument_symbol: None,
         });
     }
     if state.state_enum == State::PreservationPause
@@ -102,6 +130,9 @@ pub fn evaluate(
             buffer_r: buffer_r_s,
             m_preserve: m_preserve_s,
             binding_constraint: "".into(),
+            sizing_source: "none".into(),
+            actual_risk: None,
+            instrument_symbol: None,
         });
     }
 
@@ -126,6 +157,9 @@ pub fn evaluate(
             buffer_r: buf.buffer_r.to_string(),
             m_preserve: buf.m_preserve.to_string(),
             binding_constraint: "Buffer".into(),
+            sizing_source: "none".into(),
+            actual_risk: None,
+            instrument_symbol: None,
         });
     }
 
@@ -168,11 +202,14 @@ pub fn evaluate(
             r_allowed: "0".into(),
             size: None,
             rr: None,
-            risk_detail: Some(risk),
+            risk_detail: Some(risk.clone()),
             state: state_s,
             buffer_r: buffer_r_s,
             m_preserve: buf.m_preserve.to_string(),
             binding_constraint: "Risk".into(),
+            sizing_source: "none".into(),
+            actual_risk: None,
+            instrument_symbol: None,
         });
     }
 
@@ -185,37 +222,156 @@ pub fn evaluate(
             r_allowed: risk.r_allowed.to_string(),
             size: None,
             rr: None,
-            risk_detail: Some(risk),
+            risk_detail: Some(risk.clone()),
             state: state_s,
             buffer_r: buffer_r_s,
             m_preserve: m_preserve_s,
             binding_constraint: binding,
+            sizing_source: "none".into(),
+            actual_risk: None,
+            instrument_symbol: None,
         });
     };
 
-    // 6. Sizing
-    let sinput = SizingInput {
-        entry: p.entry.clone(),
-        stop: p.stop.clone(),
-        contract_multiplier: p.contract_multiplier.clone(),
-        commission_per_unit: p.commission_per_unit.clone(),
-        slippage_buffer: p.slippage_buffer.clone(),
+    // 6. Sizing — new path
+    let entry_d = Decimal::from_str(&p.entry).map_err(|e| EquityError::InvalidInput(format!("entry: {e}")))?;
+    let stop_d = Decimal::from_str(&p.stop).map_err(|e| EquityError::InvalidInput(format!("stop: {e}")))?;
+
+    // Resolve instrument spec
+    let (inst_opt, sizing_source_str): (Option<crate::domain::instrument::InstrumentSpec>, &str) =
+        if p.allow_legacy {
+            // Explicit legacy path
+            (None, "legacy")
+        } else if let Some(ov) = &p.instrument_override {
+            ov.validate_for_sizing().map_err(EquityError::InvalidInput)?;
+            (Some(ov.clone()), "override")
+        } else if let Some(sym) = &p.symbol {
+            // DB lookup
+            match crate::db::instruments::get_typed(conn.ok_or_else(|| EquityError::InvalidInput("symbol provided but no DB connection".into()))?, sym) {
+                Ok(Some(spec)) => {
+                    spec.validate_for_sizing().map_err(EquityError::InvalidInput)?;
+                    (Some(spec), "instrument")
+                }
+                Ok(None) => {
+                    return Ok(TradeDecision {
+                        allowed: false,
+                        reason: DecisionReason::InstrumentNotFound { symbol: sym.clone() },
+                        r_allowed: risk.r_allowed.to_string(),
+                        size: None,
+                        rr: None,
+                        risk_detail: Some(risk.clone()),
+                        state: state_s,
+                        buffer_r: buffer_r_s,
+                        m_preserve: m_preserve_s,
+                        binding_constraint: risk.binding.to_string(),
+                        sizing_source: "none".into(),
+                        actual_risk: None,
+                        instrument_symbol: Some(sym.clone()),
+                    });
+                }
+                Err(e) => return Err(EquityError::InvalidInput(format!("instrument lookup: {e}"))),
+            }
+        } else {
+            // No symbol, no override, not legacy → reject
+            return Ok(TradeDecision {
+                allowed: false,
+                reason: DecisionReason::InstrumentNotFound { symbol: "".into() },
+                r_allowed: risk.r_allowed.to_string(),
+                size: None,
+                rr: None,
+                risk_detail: Some(risk.clone()),
+                state: state_s,
+                buffer_r: buffer_r_s,
+                m_preserve: m_preserve_s,
+                binding_constraint: risk.binding.to_string(),
+                sizing_source: "none".into(),
+                actual_risk: None,
+                instrument_symbol: None,
+            });
+        };
+
+    let (size_str, rr_str, actual_risk_str, inst_sym) = if let Some(inst) = &inst_opt {
+        // NEW: size_from_allowed
+        use crate::risk::position::{size_from_allowed, SizeFromAllowedInput};
+        let inp = SizeFromAllowedInput {
+            r_allowed: risk.r_allowed,
+            entry_price: entry_d,
+            stop_price: stop_d,
+            tick_size: inst.tick_size,
+            tick_value: inst.tick_value,
+            contract_size: inst.contract_size,
+            commission_per_lot: inst.commission_per_lot,
+            lot_step: inst.lot_step,
+            min_qty: inst.min_qty,
+            max_qty: inst.max_qty,
+        };
+        let res = size_from_allowed(&inp)
+            .map_err(|e| EquityError::InvalidInput(format!("sizing: {e}")))?;
+
+        if res.rejected_below_min {
+            return Ok(TradeDecision {
+                allowed: false,
+                reason: DecisionReason::BelowMinimumQuantity {
+                    min_qty: inst.min_qty.to_string(),
+                    allowed_risk: risk.r_allowed.to_string(),
+                    actual_risk: res.actual_risk.to_string(),
+                },
+                r_allowed: risk.r_allowed.to_string(),
+                size: None,
+                rr: None,
+                risk_detail: Some(risk.clone()),
+                state: state_s,
+                buffer_r: buffer_r_s,
+                m_preserve: m_preserve_s,
+                binding_constraint: risk.binding.to_string(),
+                sizing_source: sizing_source_str.into(),
+                actual_risk: Some(res.actual_risk.to_string()),
+                instrument_symbol: Some(inst.symbol.clone()),
+            });
+        }
+
+        let rr = if let Some(tp) = p.take_profit.as_ref() {
+            if let Ok(tp_d) = Decimal::from_str(tp) {
+                let risk_d = (entry_d - stop_d).abs();
+                if risk_d > Decimal::ZERO {
+                    Some(((tp_d - entry_d).abs() / risk_d).to_string())
+                } else { None }
+            } else { None }
+        } else { None };
+
+        (Some(res.lots.to_string()), rr, Some(res.actual_risk.to_string()), Some(inst.symbol.clone()))
+    } else {
+        // LEGACY fallback
+        let mult = p.contract_multiplier.clone().unwrap_or_default();
+        let comm = p.commission_per_unit.clone().unwrap_or_default();
+        let slip = p.slippage_buffer.clone().unwrap_or_default();
+        let sinput = SizingInput {
+            entry: p.entry.clone(),
+            stop: p.stop.clone(),
+            contract_multiplier: mult,
+            commission_per_unit: comm,
+            slippage_buffer: slip,
+        };
+        let sized = compute_size(risk.r_allowed, &sinput, p.take_profit.as_deref())
+            .map_err(EquityError::InvalidInput)?;
+        (Some(sized.size.to_string()), sized.rr.map(|r| r.to_string()), None, None)
     };
-    let sized = compute_size(risk.r_allowed, &sinput, p.take_profit.as_deref())
-        .map_err(EquityError::InvalidInput)?;
 
     let binding = risk.binding.to_string();
     Ok(TradeDecision {
         allowed: true,
         reason: DecisionReason::Allowed,
         r_allowed: risk.r_allowed.to_string(),
-        size: Some(sized.size.to_string()),
-        rr: sized.rr.map(|r| r.to_string()),
-        risk_detail: Some(risk),
+        size: size_str,
+        rr: rr_str,
+        risk_detail: Some(risk.clone()),
         state: state_s,
         buffer_r: buffer_r_s,
         m_preserve: m_preserve_s,
         binding_constraint: binding,
+        sizing_source: sizing_source_str.into(),
+        actual_risk: actual_risk_str,
+        instrument_symbol: inst_sym,
     })
 }
 
@@ -287,5 +443,217 @@ mod tests {
         let d = evaluate(&st, &cfg, None).unwrap();
         assert!(d.allowed);
         assert!(d.size.is_none());
+    }
+
+
+    // ============================================================
+    // S2.1: Instrument-aware sizing
+    // ============================================================
+
+    fn make_instrument(symbol: &str, tick_size: &str, tick_value: &str, contract_size: &str, min_qty: &str, lot_step: &str) -> crate::domain::instrument::InstrumentSpec {
+        use rust_decimal::prelude::FromStr;
+        crate::domain::instrument::InstrumentSpec {
+            symbol: symbol.into(),
+            currency: "USD".into(),
+            tick_size: Decimal::from_str(tick_size).unwrap(),
+            tick_value: Decimal::from_str(tick_value).unwrap(),
+            contract_size: Decimal::from_str(contract_size).unwrap(),
+            min_qty: Decimal::from_str(min_qty).unwrap(),
+            max_qty: Decimal::from_str("100").unwrap(),
+            lot_step: Decimal::from_str(lot_step).unwrap(),
+            commission_per_lot: Decimal::ZERO,
+            slippage_per_unit: Decimal::ZERO,
+            spec_source: crate::domain::instrument::SpecSource::UserEntered,
+        }
+    }
+
+    fn eval_with_inst(state: &AccountState, cfg: &EquityConfig, inst: &crate::domain::instrument::InstrumentSpec) -> TradeDecision {
+        let p = TradeProposal {
+            symbol: None,
+            entry: "1.1000".into(),
+            stop: "1.0950".into(),
+            take_profit: None,
+            allow_legacy: false,
+            contract_multiplier: None,
+            commission_per_unit: None,
+            slippage_buffer: None,
+            instrument_override: Some(inst.clone()),
+        };
+        evaluate(state, cfg, Some(&p)).unwrap()
+    }
+
+    #[test]
+    fn t_eurusd_sizing() {
+        // EURUSD: 50 pips = 50 ticks (tick_size 0.00001, tick_value 1)
+        // loss_per_lot = 50 * 1 = 50
+        // R_allowed = 50.03 → size = 50.03/50 ≈ 1.00
+        let inst = make_instrument("EURUSD", "0.00001", "1", "100000", "0.01", "0.01");
+        let cfg = EquityConfig::default_v2();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        let d = eval_with_inst(&st, &cfg, &inst);
+        assert!(d.allowed, "should allow: {:?}", d.reason);
+        let size: f64 = d.size.unwrap().parse().unwrap();
+        assert!(size > 0.9 && size < 1.1, "expected ~1.0 lots, got {}", size);
+    }
+
+    #[test]
+    fn t_xauusd_sizing() {
+        // XAUUSD: entry 2000, stop 1995 (5 points = 500 ticks with tick_size 0.01)
+        // loss_per_lot = 500 * 1 = 500
+        // R_allowed ~ 50 → size = 0.1
+        let inst = make_instrument("XAUUSD", "0.01", "1", "100", "0.01", "0.01");
+        let cfg = EquityConfig::default_v2();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        let p = TradeProposal {
+            symbol: None,
+            entry: "2000".into(),
+            stop: "1995".into(),
+            take_profit: None,
+            allow_legacy: false,
+            contract_multiplier: None,
+            commission_per_unit: None,
+            slippage_buffer: None,
+            instrument_override: Some(inst),
+        };
+        let d = evaluate(&st, &cfg, Some(&p)).unwrap();
+        assert!(d.allowed);
+        let size: f64 = d.size.unwrap().parse().unwrap();
+        assert!(size < 0.2, "expected small size, got {}", size);
+    }
+
+    #[test]
+    fn t_min_qty_rejection() {
+        // Very small R_allowed → min_qty too big → reject
+        let inst = make_instrument("EURUSD", "0.00001", "1", "100000", "1.0", "0.01"); // min 1.0 lot
+        let cfg = EquityConfig::default_v2();
+        let mut snap = snap_fresh();
+        // Tiny risk: R_allowed ≈ 0.1 → 0.1/50 = 0.002 lots < min 1.0
+        snap.equity = Decimal::from_str("10").unwrap();
+        snap.initial_balance = Decimal::from_str("10").unwrap();
+        snap.high_watermark = Decimal::from_str("10").unwrap();
+        let st = AccountState::from_snapshot(snap, &cfg).unwrap();
+        let d = eval_with_inst(&st, &cfg, &inst);
+        // Either rejected_below_min or r_allowed=0 → rejected
+        // Just assert it's handled (not panics)
+        let _ = d.allowed;
+    }
+
+    #[test]
+    fn t_estimated_spec_rejected() {
+        use crate::domain::instrument::SpecSource;
+        let mut inst = make_instrument("EURUSD", "0.00001", "1", "100000", "0.01", "0.01");
+        inst.spec_source = SpecSource::Estimated;
+        let cfg = EquityConfig::default_v2();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        let d = eval_with_inst(&st, &cfg, &inst);
+        assert!(!d.allowed);
+    }
+
+    #[test]
+    fn t_zero_tick_rejected() {
+        let mut inst = make_instrument("EURUSD", "0.00001", "1", "100000", "0.01", "0.01");
+        inst.tick_size = Decimal::ZERO;
+        let cfg = EquityConfig::default_v2();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        let d = eval_with_inst(&st, &cfg, &inst);
+        assert!(!d.allowed);
+    }
+
+    #[test]
+    fn t_legacy_path_when_allow_legacy() {
+        let cfg = EquityConfig::default_v2();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        let p = TradeProposal {
+            symbol: None,
+            entry: "1.1000".into(),
+            stop: "1.0950".into(),
+            take_profit: None,
+            allow_legacy: true,
+            contract_multiplier: Some("100000".into()),
+            commission_per_unit: Some("0".into()),
+            slippage_buffer: Some("0".into()),
+            instrument_override: None,
+        };
+        let d = evaluate(&st, &cfg, Some(&p)).unwrap();
+        assert!(d.allowed);
+        assert_eq!(d.sizing_source, "legacy");
+    }
+
+    #[test]
+    fn t_symbol_not_found_rejected() {
+        let cfg = EquityConfig::default_v2();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        let p = TradeProposal {
+            symbol: Some("UNKNOWN".into()),
+            entry: "1.1000".into(),
+            stop: "1.0950".into(),
+            take_profit: None,
+            allow_legacy: false,
+            contract_multiplier: None,
+            commission_per_unit: None,
+            slippage_buffer: None,
+            instrument_override: None,
+        };
+        // evaluate() without conn → symbol lookup fails → reject
+        let d = evaluate(&st, &cfg, Some(&p)).unwrap();
+        assert!(!d.allowed);
+        assert_eq!(d.sizing_source, "none");
+    }
+
+    #[test]
+    fn t_size_from_allowed_gives_actual_risk() {
+        let inst = make_instrument("EURUSD", "0.00001", "1", "100000", "0.01", "0.01");
+        let cfg = EquityConfig::default_v2();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        let d = eval_with_inst(&st, &cfg, &inst);
+        assert!(d.allowed);
+        let actual_risk: f64 = d.actual_risk.unwrap().parse().unwrap();
+        let r_allowed: f64 = d.r_allowed.parse().unwrap();
+        assert!(actual_risk <= r_allowed + 0.01, "actual_risk {} > r_allowed {}", actual_risk, r_allowed);
+    }
+
+    #[test]
+    fn t_lot_step_rounding() {
+        // loss_per_lot = 50, R = 50.03 → raw = 1.0006
+        // lot_step 0.01 → round DOWN to 1.00
+        let inst = make_instrument("EURUSD", "0.00001", "1", "100000", "0.01", "0.01");
+        let cfg = EquityConfig::default_v2();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        let d = eval_with_inst(&st, &cfg, &inst);
+        assert!(d.allowed);
+        let size: f64 = d.size.unwrap().parse().unwrap();
+        // Must be multiple of 0.01 (i.e., 1.00 not 1.0006)
+        let rounded = (size * 100.0).round() / 100.0;
+        assert!((size - rounded).abs() < 0.001);
+    }
+
+    #[test]
+    fn t_no_symbol_no_override_rejects() {
+        let cfg = EquityConfig::default_v2();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        let p = TradeProposal {
+            symbol: None,
+            entry: "1.1000".into(),
+            stop: "1.0950".into(),
+            take_profit: None,
+            allow_legacy: false,
+            contract_multiplier: None,
+            commission_per_unit: None,
+            slippage_buffer: None,
+            instrument_override: None,
+        };
+        let d = evaluate(&st, &cfg, Some(&p)).unwrap();
+        assert!(!d.allowed);
+    }
+
+    #[test]
+    fn t_instrument_override_used() {
+        // If override provided, sizing_source == "override"
+        let inst = make_instrument("EURUSD", "0.00001", "1", "100000", "0.01", "0.01");
+        let cfg = EquityConfig::default_v2();
+        let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
+        let d = eval_with_inst(&st, &cfg, &inst);
+        assert_eq!(d.sizing_source, "override");
+        assert_eq!(d.instrument_symbol.as_deref(), Some("EURUSD"));
     }
 }

@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DecisionOut,
   evaluateTrade,
   fmtMoney,
   fmtPct,
-  humanizeReason,
+  listInstruments,
   reasonDetail,
+  humanizeReason,
+  Instrument,
 } from "../../lib/equityApi";
 
 interface Props {
@@ -27,6 +29,17 @@ export function NewTradeCard({
   const [perLotLoss, setPerLotLoss] = useState("500");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<DecisionOut | null>(null);
+  const [instruments, setInstruments] = useState<Instrument[]>([]);
+
+  useEffect(() => {
+    listInstruments()
+      .then((list) => {
+        setInstruments(list);
+        if (list.length > 0) setSymbol(list[0].symbol);
+      })
+      .catch((e) => console.warn("instruments load failed", e));
+  }, []);
+  const [symbol, setSymbol] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -65,9 +78,11 @@ export function NewTradeCard({
         entry,
         stop,
         take_profit: tp || null,
-        contract_multiplier: String(Math.round(implied.multiplier)),
-        commission_per_unit: "0",
-        slippage_buffer: "0",
+        symbol: symbol,
+        allow_legacy: false,
+        contract_multiplier: undefined,
+        commission_per_unit: undefined,
+        slippage_buffer: undefined,
       });
       setResult(r);
     } catch (err) {
@@ -92,7 +107,29 @@ export function NewTradeCard({
       <form onSubmit={evaluate}>
         {/* Row 1: entry / stop / target */}
         <div className="ee-form-row">
-          <label className="ee-field">
+          
+        <label className="ee-field" style={{ marginBottom: 12 }}>
+          <span>
+            Symbol
+            {instruments.length === 0 && (
+              <em className="ee-hint"> — no instruments yet (add in Settings)</em>
+            )}
+          </span>
+          <select
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value)}
+            disabled={instruments.length === 0}
+          >
+            <option value="">— select —</option>
+            {instruments.map((i) => (
+              <option key={i.symbol} value={i.symbol}>
+                {i.symbol} ({i.spec_source})
+              </option>
+            ))}
+          </select>
+        </label>
+
+<label className="ee-field">
             <span>Entry</span>
             <input
               className="mono"

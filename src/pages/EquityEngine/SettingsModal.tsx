@@ -2,9 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import {
   EquityConfig,
   RiskPreview,
+  AccountProfile,
+  AccountType,
+  ProfileInput,
   defaultConfig,
   getEquityConfig,
   setEquityConfig,
+  getAccountProfile,
+  setAccountProfile,
   fmtMoney,
   parseDec,
 } from "../../lib/equityApi";
@@ -40,7 +45,7 @@ const SIMPLE_FIELDS: SimpleField[] = [
   {
     key: "daily_loss_limit",
     label: "Daily loss limit",
-    hint: "Stop trading for the day after losing this much",
+    hint: "Stop trading for the day after losing this much (0 = disabled)",
     min: 0,
     max: 0.2,
     step: 0.005,
@@ -49,20 +54,56 @@ const SIMPLE_FIELDS: SimpleField[] = [
   {
     key: "r_portfolio_max",
     label: "Max total open risk",
-    hint: "Total risk across all open trades combined",
+    hint: "Total risk across all open trades combined (0 = disabled)",
     min: 0,
     max: 0.3,
     step: 0.005,
     kind: "pct",
   },
   {
-    key: "n_max",
-    label: "Pause after N losses",
-    hint: "Stop trading after this many consecutive losses",
-    min: 1,
-    max: 20,
-    step: 1,
-    kind: "int",
+    key: "r_prop_max",
+    label: "Prop per-trade max",
+    hint: "Per-trade risk cap for prop firms (0 = disabled)",
+    min: 0,
+    max: 0.1,
+    step: 0.005,
+    kind: "pct",
+  },
+  {
+    key: "profit_protect_activation",
+    label: "Profit protection activation",
+    hint: "NAV growth at which profit protection starts (0.05 = 5%)",
+    min: 0.01,
+    max: 0.20,
+    step: 0.005,
+    kind: "pct",
+  },
+  {
+    key: "profit_protect_full",
+    label: "Full protection activation",
+    hint: "NAV growth at which protection reaches max retention (0.10 = 10%)",
+    min: 0.02,
+    max: 0.30,
+    step: 0.005,
+    kind: "pct",
+  },
+  {
+    key: "max_profit_retention",
+    label: "Max profit retention",
+    hint: "Fraction of accumulated profit locked as protected (0.40 = 40%)",
+    min: 0.10,
+    max: 0.60,
+    step: 0.05,
+    kind: "pct",
+  },
+  {
+    key: "trailing_dd_pct",
+    label: "Trailing drawdown (internal)",
+    hint: "Internal trailing floor from NAV HWM (0.10 = 10%)",
+    min: 0.02,
+    max: 0.20,
+    step: 0.005,
+    kind: "pct",
   },
 ];
 
@@ -76,30 +117,21 @@ interface AdvField {
 const ADV_TABS: Record<AdvTab, AdvField[]> = {
   risk: [
     { key: "r0", label: "Base risk (R₀)", hint: "0.01 = 1% of equity", kind: "text" },
-    { key: "r_min", label: "Minimum risk", kind: "text" },
-    { key: "delta_r", label: "Step size (ΔR)", kind: "text" },
-    { key: "dd_1", label: "DD tier 1 (caution)", kind: "text" },
-    { key: "dd_2", label: "DD tier 2 (warning)", kind: "text" },
-    { key: "dd_3", label: "DD tier 3 (severe)", kind: "text" },
-    { key: "m_dd_1", label: "Multiplier tier 1", kind: "text" },
-    { key: "m_dd_2", label: "Multiplier tier 2", kind: "text" },
-    { key: "m_dd_3", label: "Multiplier tier 3", kind: "text" },
-    { key: "m_dd_4", label: "Multiplier tier 4+", kind: "text" },
-    { key: "m_loss_table", label: "Loss-streak table (comma-separated)", kind: "text" },
-    { key: "n_max", label: "N_max (pause threshold)", kind: "number" },
+    { key: "profit_protect_activation", label: "Profit protection activation", hint: "0.05 = 5% growth", kind: "text" },
+    { key: "profit_protect_full", label: "Full protection activation", hint: "0.10 = 10% growth", kind: "text" },
+    { key: "max_profit_retention", label: "Max profit retention", hint: "0.40 = 40%", kind: "text" },
+    { key: "trailing_dd_pct", label: "Trailing DD (internal)", hint: "0.10 = 10%", kind: "text" },
+    { key: "execution_buffer_pct", label: "Execution buffer", hint: "0.001 = 0.1%", kind: "text" },
   ],
   caps: [
     { key: "daily_loss_limit", label: "Daily loss limit", hint: "0 = disabled", kind: "text" },
     { key: "r_portfolio_max", label: "Portfolio risk max", hint: "0 = disabled", kind: "text" },
     { key: "r_prop_max", label: "Prop per-trade max", hint: "0 = disabled", kind: "text" },
-    { key: "mu_max", label: "Margin usage max", kind: "text" },
   ],
   recovery: [
-    { key: "q_retention", label: "Q — profit retention", kind: "text" },
-    { key: "d_trailing", label: "d — trailing from HWM", kind: "text" },
-    { key: "d_prop", label: "D_prop (prop budget)", kind: "text" },
-    { key: "alpha", label: "α — floor risk factor", kind: "text" },
-    { key: "recovery_target", label: "Recovery target", kind: "text" },
+    { key: "alpha", label: "α — floor risk factor", hint: "0.5 = 50% of loss capacity", kind: "text" },
+    { key: "d_prop", label: "D_prop (prop budget)", hint: "0 = disabled", kind: "text" },
+    { key: "recovery_probe_pct", label: "Recovery probe risk", hint: "0.25 = 25% of R_base", kind: "text" },
   ],
   advanced: [
     { key: "max_snapshot_age_hours", label: "Max snapshot age (h)", hint: "reject decisions if older", kind: "number" },
@@ -111,6 +143,15 @@ export function SettingsModal({ onClose, preview }: Props) {
   const [advTab, setAdvTab] = useState<AdvTab>("risk");
   const [cfg, setCfg] = useState<EquityConfig>(defaultConfig());
   const [original, setOriginal] = useState<EquityConfig>(defaultConfig());
+
+  // S14: account profile state
+  const [profile, setProfile] = useState<AccountProfile | null>(null);
+  const [profileType, setProfileType] = useState<AccountType>("personal");
+  const [profileTarget, setProfileTarget] = useState<string>("0.08");
+  const [profileDD, setProfileDD] = useState<string>("0.05");
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileErr, setProfileErr] = useState<string | null>(null);
+  const [profileSavedAt, setProfileSavedAt] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +165,31 @@ export function SettingsModal({ onClose, preview }: Props) {
         setLoaded(true);
       })
       .catch((e) => setError(String(e)));
+  }, [])
+
+  // S14: load account profile
+  useEffect(() => {
+    (async () => {
+      try {
+        const activeId = await (async () => {
+          try {
+            const { getActiveAccountId } = await import("../../lib/accountsApi");
+            return await getActiveAccountId();
+          } catch { return null; }
+        })();
+        if (!activeId) return;
+        const p = await getAccountProfile(activeId);
+        if (p) {
+          setProfile(p);
+          setProfileType(p.account_type);
+          setProfileTarget(p.profit_target_pct);
+          setProfileDD(p.max_dd_pct);
+        }
+      } catch (e) {
+        // non-fatal — settings still work without profile
+        console.warn("profile load failed", e);
+      }
+    })();
   }, []);
 
   const hasChanges = useMemo(
@@ -145,6 +211,10 @@ export function SettingsModal({ onClose, preview }: Props) {
     setBusy(true);
     try {
       await setEquityConfig(cfg);
+      // S14: if profile exists and type is personal/prop, also save it
+      if (profile) {
+        // Profile is saved separately via the Account Profile section
+      }
       setOriginal(cfg);
       setOk(true);
     } catch (e) {
@@ -165,7 +235,36 @@ export function SettingsModal({ onClose, preview }: Props) {
     setError(null);
   }
 
-  if (!loaded) {
+  async function saveProfile() {
+    setProfileBusy(true);
+    setProfileErr(null);
+    try {
+      const activeId = await (async () => {
+        try {
+          const { getActiveAccountId } = await import("../../lib/accountsApi");
+          return await getActiveAccountId();
+        } catch { return null; }
+      })();
+      if (!activeId) {
+        setProfileErr("No active account selected");
+        return;
+      }
+      const input: ProfileInput = {
+        account_type: profileType,
+        profit_target_pct: profileTarget,
+        max_dd_pct: profileDD,
+      };
+      const saved = await setAccountProfile(activeId, input);
+      setProfile(saved);
+      setProfileSavedAt(new Date().toLocaleTimeString());
+    } catch (e) {
+      setProfileErr(String(e));
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+
+    if (!loaded) {
     return (
       <div className="ee-modal-backdrop" onClick={onClose}>
         <div className="ee-modal ee-modal--wide" onClick={(e) => e.stopPropagation()}>
@@ -183,6 +282,7 @@ export function SettingsModal({ onClose, preview }: Props) {
     );
   }
 
+  
   return (
     <div className="ee-modal-backdrop" onClick={onClose}>
       <div className="ee-modal ee-modal--wide" onClick={(e) => e.stopPropagation()}>
@@ -215,6 +315,87 @@ export function SettingsModal({ onClose, preview }: Props) {
             </button>
           </div>
         </div>
+
+        <div className="ee-modal__body"><div className="settings__section ee-profile-section">
+              <h2 className="section-title">Account Profile</h2>
+              <p className="settings__hint">
+                Adaptive preset for the active account. Internal protection settings
+                are derived automatically — they are <strong>not</strong> the actual
+                prop-firm rules (those live in the prop rules table).
+              </p>
+
+              <div className="ee-profile-row">
+                <label className="ee-profile-row__label">Account type</label>
+                <select
+                  value={profileType}
+                  onChange={(e) => setProfileType(e.target.value as AccountType)}
+                  className="input"
+                >
+                  <option value="personal">Personal</option>
+                  <option value="prop_firm">Prop firm</option>
+                </select>
+              </div>
+
+              {profileType === "prop_firm" && (
+                <>
+                  <div className="ee-profile-row">
+                    <label className="ee-profile-row__label">Profit target</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max="0.50"
+                      value={profileTarget}
+                      onChange={(e) => setProfileTarget(e.target.value)}
+                      className="input"
+                      
+                    />
+                    <span className="ee-profile-row__hint">e.g. 0.08 = 8%</span>
+                  </div>
+                  <div className="ee-profile-row">
+                    <label className="ee-profile-row__label">Max drawdown</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max="0.20"
+                      value={profileDD}
+                      onChange={(e) => setProfileDD(e.target.value)}
+                      className="input"
+                      
+                    />
+                    <span className="ee-profile-row__hint">must be &lt; profit target</span>
+                  </div>
+                </>
+              )}
+
+              <div className="ee-profile-actions">
+                <button
+                  className="btn btn--primary"
+                  onClick={saveProfile}
+                  disabled={profileBusy}
+                >
+                  {profileBusy ? "Saving…" : "Save profile"}
+                </button>
+                {profileSavedAt && <span className="ee-profile-saved">Saved at {profileSavedAt}</span>}
+              </div>
+
+              {profileErr && <div className="ee-profile-error">{profileErr}</div>}
+
+              {profile && (
+                <div className="ee-profile-derived">
+                  <div className="ee-profile-derived__title">Derived values</div>
+                  <table className="ee-profile-derived__table">
+                    <tbody>
+                      <tr><td>Activation</td><td className="mono">{profile.profit_protect_activation}</td></tr>
+                      <tr><td>Full activation</td><td className="mono">{profile.profit_protect_full}</td></tr>
+                      <tr><td>Max retention</td><td className="mono">{profile.max_profit_retention}</td></tr>
+                      <tr><td>Trailing DD</td><td className="mono">{profile.trailing_dd_pct}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div></div>
 
         {/* Simple mode */}
         {mode === "simple" && (
@@ -292,6 +473,8 @@ export function SettingsModal({ onClose, preview }: Props) {
               ))}
             </nav>
             <div className="ee-modal__body">
+            
+
               <div className="ee-form-grid">
                 {ADV_TABS[advTab].map((f) => (
                   <label key={f.key} className="ee-field">
@@ -402,59 +585,26 @@ export function SettingsModal({ onClose, preview }: Props) {
  * ============================================================ */
 function validate(cfg: EquityConfig): { errors: string[] } {
   const errors: string[] = [];
-
   const dec = (k: keyof EquityConfig) => {
-    const v = parseDec(cfg[k] as string | undefined);
-    return v;
+    const v = cfg[k];
+    if (typeof v !== "string") return NaN;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : NaN;
   };
 
   const r0 = dec("r0");
-  if (r0 === null || r0 <= 0 || r0 > 0.2) {
-    errors.push("R₀ must be > 0 and ≤ 20%");
-  }
-  const rMin = dec("r_min");
-  if (rMin !== null && rMin < 0) {
-    errors.push("r_min cannot be negative");
-  }
-  const daily = dec("daily_loss_limit");
-  if (daily !== null && (daily < 0 || daily > 1)) {
-    errors.push("Daily loss limit must be 0–100% (0 = disabled)");
-  }
-  const portMax = dec("r_portfolio_max");
-  if (portMax !== null && (portMax < 0 || portMax > 1)) {
-    errors.push("Portfolio risk max must be 0–100% (0 = disabled)");
-  }
-  const propMax = dec("r_prop_max");
-  if (propMax !== null && (propMax < 0 || propMax > 1)) {
-    errors.push("Prop per-trade max must be 0–100% (0 = disabled)");
-  }
-  const q = dec("q_retention");
-  if (q !== null && (q < 0 || q > 1)) {
-    errors.push("Q (profit retention) must be 0–100%");
-  }
-  const dTrail = dec("d_trailing");
-  if (dTrail !== null && (dTrail < 0 || dTrail > 1)) {
-    errors.push("d (trailing) must be 0–100%");
-  }
-  const alpha = dec("alpha");
-  if (alpha !== null && (alpha < 0 || alpha > 1)) {
-    errors.push("α (floor risk factor) must be 0–100%");
-  }
+  if (!Number.isFinite(r0) || r0 <= 0 || r0 > 0.05) errors.push("R₀ must be in (0, 5%]");
 
-  // DD tiers monotonic
-  const dd1 = dec("dd_1");
-  const dd2 = dec("dd_2");
-  const dd3 = dec("dd_3");
-  if (dd1 !== null && dd2 !== null && dd1 >= dd2) {
-    errors.push("DD tier 1 must be < DD tier 2");
-  }
-  if (dd2 !== null && dd3 !== null && dd2 >= dd3) {
-    errors.push("DD tier 2 must be < DD tier 3");
-  }
+  const pAct = dec("profit_protect_activation");
+  const pFull = dec("profit_protect_full");
+  if (!Number.isFinite(pAct) || pAct <= 0) errors.push("Profit activation must be > 0");
+  if (!Number.isFinite(pFull) || pFull <= pAct) errors.push("Full activation must be > activation");
 
-  if (cfg.n_max < 1) {
-    errors.push("N_max must be ≥ 1");
-  }
+  const retention = dec("max_profit_retention");
+  if (!Number.isFinite(retention) || retention <= 0 || retention > 0.6) errors.push("Retention must be in (0, 60%]");
+
+  const trailing = dec("trailing_dd_pct");
+  if (!Number.isFinite(trailing) || trailing <= 0 || trailing > 0.2) errors.push("Trailing DD must be in (0, 20%]");
 
   return { errors };
 }

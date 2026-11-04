@@ -36,4 +36,6 @@ pub enum DecisionReason {
     RAllowedZeroOrNegative,
     SnapshotTooOld { age_hours: i64, max_hours: i64 },
     InvalidConfig(String),
+    InstrumentNotFound { symbol: String },
+    BelowMinimumQuantity { min_qty: String, allowed_risk: String, actual_risk: String },
 }

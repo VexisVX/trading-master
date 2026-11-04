@@ -131,3 +131,83 @@ mod tests {
         assert_eq!(got.contract_size, "200000");
     }
 }
+
+
+// ============================================================
+// Typed getter — returns InstrumentSpec ready for engine use
+// ============================================================
+
+pub fn get_typed(
+    conn: &Connection,
+    symbol: &str,
+) -> Result<Option<crate::domain::instrument::InstrumentSpec>, DbError> {
+    use crate::domain::instrument::{InstrumentSpec, SpecSource};
+    use rust_decimal::prelude::FromStr;
+
+    let raw = get(conn, symbol)?;
+    let Some(r) = raw else { return Ok(None) };
+
+    let d = |s: &str, name: &str| -> Result<Decimal, DbError> {
+        Decimal::from_str(s).map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
+            .map_err(|e| { eprintln!("instrument {symbol} {name}: bad decimal"); e })
+    };
+
+    let spec = InstrumentSpec {
+        symbol: r.symbol,
+        currency: r.currency,
+        tick_size: d(&r.tick_size, "tick_size")?,
+        tick_value: d(&r.tick_value, "tick_value")?,
+        contract_size: d(&r.contract_size, "contract_size")?,
+        min_qty: d(&r.min_qty, "min_qty")?,
+        max_qty: d(&r.max_qty, "max_qty")?,
+        lot_step: d(&r.lot_step, "lot_step")?,
+        commission_per_lot: d(&r.commission_per_lot, "commission_per_lot")?,
+        slippage_per_unit: d(&r.slippage_per_unit, "slippage_per_unit")?,
+        spec_source: SpecSource::parse(&r.spec_source).unwrap_or(SpecSource::UserEntered),
+    };
+    Ok(Some(spec))
+}
+
+#[cfg(test)]
+mod get_typed_tests {
+    use super::*;
+    use rust_decimal_macros::dec;
+
+    fn fresh() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE instruments (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               symbol TEXT NOT NULL UNIQUE,
+               currency TEXT NOT NULL,
+               tick_size TEXT NOT NULL, tick_value TEXT NOT NULL,
+               contract_size TEXT NOT NULL,
+               min_qty TEXT NOT NULL DEFAULT '0',
+               max_qty TEXT NOT NULL DEFAULT '0',
+               lot_step TEXT NOT NULL DEFAULT '0.01',
+               commission_per_lot TEXT NOT NULL DEFAULT '0',
+               slippage_per_unit TEXT NOT NULL DEFAULT '0',
+               spec_source TEXT NOT NULL DEFAULT 'user_entered',
+               created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+             );",
+        ).unwrap();
+        c
+    }
+
+    #[test]
+    fn typed_get_works() {
+        let c = fresh();
+        upsert(&c, &InstrumentRow {
+            symbol: "EURUSD".into(), currency: "USD".into(),
+            tick_size: "0.00001".into(), tick_value: "1".into(),
+            contract_size: "100000".into(),
+            min_qty: "0.01".into(), max_qty: "100".into(),
+            lot_step: "0.01".into(),
+            commission_per_lot: "0".into(), slippage_per_unit: "0".into(),
+            spec_source: "user_entered".into(),
+        }).unwrap();
+        let s = get_typed(&c, "EURUSD").unwrap().unwrap();
+        assert_eq!(s.tick_size, dec!(0.00001));
+        assert_eq!(s.contract_size, dec!(100000));
+    }
+}

@@ -292,21 +292,24 @@ pub fn equity_evaluate(
 
     // 2. Build proposal (clone original for later risk_detail)
     let proposal_for_detail = proposal.clone();
-    // 2. Build proposal
+    // 2. Build proposal (S2.1: symbol optional, legacy fallback)
     let prop = match proposal {
         Some(p) => Some(TradeProposal {
+            symbol: None,
             entry: p.entry,
             stop: p.stop,
             take_profit: p.take_profit,
-            contract_multiplier: p.contract_multiplier,
-            commission_per_unit: p.commission_per_unit,
-            slippage_buffer: p.slippage_buffer,
+            allow_legacy: true,  // backward compat: legacy path if no symbol
+            contract_multiplier: Some(p.contract_multiplier),
+            commission_per_unit: Some(p.commission_per_unit),
+            slippage_buffer: Some(p.slippage_buffer),
+            instrument_override: None,
         }),
         None => None,
     };
 
     // 3. Evaluate
-    let decision: TradeDecision = evaluate(&state_acct, &cfg, prop.as_ref())
+    let decision: TradeDecision = crate::equity::engine::evaluate_with_conn(&state_acct, &cfg, prop.as_ref(), Some(&conn))
         .map_err(|e: EquityError| e.to_string())?;
 
     // 4. Persist decision
@@ -647,10 +650,9 @@ pub fn equity_auto_snapshot_create(
         consecutive_losses: streak,
         taken_at: chrono::Utc::now(),
     };
-    let profile_opt = {
-        let conn2 = state.db.lock().map_err(|e| e.to_string())?;
-        crate::db::profiles::get(&conn2, acc_id).map_err(|e| e.to_string())?
-    };
+    // S16-deadlock-fix: use the already-held conn (do NOT re-lock).
+    let profile_opt = crate::db::profiles::get(&conn, acc_id)
+        .map_err(|e| e.to_string())?;
     let acct_state = crate::equity::state::AccountState::from_snapshot_with_profile(
         parsed_for_state, &cfg, profile_opt.as_ref()
     ).map_err(|e| format!("AccountState: {}", e))?;
@@ -1082,11 +1084,11 @@ pub fn equity_preview_risk(
         taken_at: snap_row.taken_at.clone(),
     };
     let parsed = snap_domain.parse().map_err(|e| format!("snapshot: {e}"))?;
+    // conn was dropped above — re-lock for profile lookup
     let profile_opt = match account_id {
         Some(aid) => {
             let conn2 = state.db.lock().map_err(|e| e.to_string())?;
             let p = crate::db::profiles::get(&conn2, aid).map_err(|e| e.to_string())?;
-            drop(conn2);
             p
         }
         None => None,
@@ -1284,4 +1286,115 @@ pub fn equity_profile_set(
         max_profit_retention: row.max_profit_retention,
         trailing_dd_pct: row.trailing_dd_pct,
     })
+}
+
+// ============================================================
+// PHASE 2.1 — instrument management commands
+// ============================================================
+
+#[derive(Debug, serde::Serialize)]
+pub struct InstrumentOut {
+    pub symbol: String,
+    pub currency: String,
+    pub tick_size: String,
+    pub tick_value: String,
+    pub contract_size: String,
+    pub min_qty: String,
+    pub max_qty: String,
+    pub lot_step: String,
+    pub commission_per_lot: String,
+    pub slippage_per_unit: String,
+    pub spec_source: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct InstrumentInputDto {
+    pub symbol: String,
+    pub currency: String,
+    pub tick_size: String,
+    pub tick_value: String,
+    pub contract_size: String,
+    pub min_qty: String,
+    pub max_qty: String,
+    pub lot_step: String,
+    pub commission_per_lot: String,
+    pub slippage_per_unit: String,
+    pub spec_source: String,
+}
+
+#[tauri::command]
+pub fn equity_instruments_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<InstrumentOut>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT symbol, currency, tick_size, tick_value, contract_size,
+                min_qty, max_qty, lot_step, commission_per_lot, slippage_per_unit,
+                spec_source
+         FROM instruments ORDER BY symbol",
+    ).map_err(|e| e.to_string())?;
+    let rows: Vec<InstrumentOut> = stmt.query_map([], |r| Ok(InstrumentOut {
+        symbol: r.get(0)?, currency: r.get(1)?,
+        tick_size: r.get(2)?, tick_value: r.get(3)?, contract_size: r.get(4)?,
+        min_qty: r.get(5)?, max_qty: r.get(6)?, lot_step: r.get(7)?,
+        commission_per_lot: r.get(8)?, slippage_per_unit: r.get(9)?,
+        spec_source: r.get(10)?,
+    })).map_err(|e| e.to_string())?
+      .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn equity_instrument_upsert(
+    state: State<'_, AppState>,
+    input: InstrumentInputDto,
+) -> Result<(), String> {
+    use crate::domain::instrument::SpecSource;
+    use rust_decimal::prelude::FromStr;
+
+    if input.symbol.trim().is_empty() {
+        return Err("symbol required".into());
+    }
+    if input.symbol.len() > 20 {
+        return Err("symbol too long".into());
+    }
+    // Validate numeric fields parse
+    let _ = Decimal::from_str(&input.tick_size).map_err(|e| format!("tick_size: {e}"))?;
+    let _ = Decimal::from_str(&input.tick_value).map_err(|e| format!("tick_value: {e}"))?;
+    let _ = Decimal::from_str(&input.contract_size).map_err(|e| format!("contract_size: {e}"))?;
+    let _ = Decimal::from_str(&input.min_qty).map_err(|e| format!("min_qty: {e}"))?;
+    let _ = Decimal::from_str(&input.max_qty).map_err(|e| format!("max_qty: {e}"))?;
+    let _ = Decimal::from_str(&input.lot_step).map_err(|e| format!("lot_step: {e}"))?;
+    let _ = Decimal::from_str(&input.commission_per_lot).map_err(|e| format!("commission_per_lot: {e}"))?;
+    let _ = Decimal::from_str(&input.slippage_per_unit).map_err(|e| format!("slippage_per_unit: {e}"))?;
+
+    let _ = SpecSource::parse(&input.spec_source)?;
+
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let row = crate::db::instruments::InstrumentRow {
+        symbol: input.symbol.trim().to_uppercase(),
+        currency: input.currency,
+        tick_size: input.tick_size,
+        tick_value: input.tick_value,
+        contract_size: input.contract_size,
+        min_qty: input.min_qty,
+        max_qty: input.max_qty,
+        lot_step: input.lot_step,
+        commission_per_lot: input.commission_per_lot,
+        slippage_per_unit: input.slippage_per_unit,
+        spec_source: input.spec_source,
+    };
+    crate::db::instruments::upsert(&conn, &row).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn equity_instrument_delete(
+    state: State<'_, AppState>,
+    symbol: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM instruments WHERE symbol = ?1", [&symbol])
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }

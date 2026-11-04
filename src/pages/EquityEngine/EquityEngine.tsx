@@ -17,6 +17,7 @@ import { RiskIntelligenceCard } from "./RiskIntelligenceCard";
 import { CapitalProtectionCard } from "./CapitalProtectionCard";
 import { NewTradeCard } from "./NewTradeCard";
 import { RecentDecisionsCard } from "./RecentDecisionsCard";
+import { InstrumentsCard } from "./InstrumentsCard";
 import { WhyThisSizeModal } from "./WhyThisSizeModal";
 import { SettingsModal } from "./SettingsModal";
 import { AllDecisionsModal } from "./AllDecisionsModal";
@@ -252,6 +253,7 @@ export function EquityEngine() {
         decisions={decisions}
         onViewAll={() => setShowAll(true)}
       />
+        <InstrumentsCard />
 
       {whyResult && (
         <WhyThisSizeModal

@@ -73,7 +73,7 @@ fn set_version(conn: &Connection, v: i64) -> Result<(), DbError> {
     Ok(())
 }
 
-const CURRENT_VERSION: i64 = 23;
+const CURRENT_VERSION: i64 = 26;
 
 fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     let mut v = current_version(conn)?;
@@ -107,6 +107,9 @@ fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     if v < 21 { conn.execute_batch(MIGRATION_021)?; set_version(conn, 21)?; v = 21; }
     if v < 22 { conn.execute_batch(MIGRATION_022)?; set_version(conn, 22)?; v = 22; }
     if v < 23 { conn.execute_batch(MIGRATION_023)?; set_version(conn, 23)?; v = 23; }
+    if v < 24 { conn.execute_batch(MIGRATION_024)?; set_version(conn, 24)?; v = 24; }
+    if v < 25 { conn.execute_batch(MIGRATION_025)?; set_version(conn, 25)?; v = 25; }
+    if v < 26 { conn.execute_batch(MIGRATION_026)?; set_version(conn, 26)?; v = 26; }
     let _ = v;
 
     Ok(())
@@ -462,6 +465,81 @@ CREATE TABLE IF NOT EXISTS account_profiles (
   updated_at           TEXT NOT NULL
 );
 "#;
+
+const MIGRATION_024: &str = r#"
+-- Seed 6 core instruments (verified specs for major brokers).
+-- All specs are source='user_entered' by default; user must confirm broker-specific values.
+INSERT OR IGNORE INTO instruments
+  (symbol, currency, tick_size, tick_value, contract_size,
+   min_qty, max_qty, lot_step, commission_per_lot, slippage_per_unit,
+   spec_source, created_at, updated_at)
+VALUES
+  ('EURUSD', 'USD', '0.00001', '1', '100000', '0.01', '100', '0.01', '0', '0',
+   'user_entered', datetime('now'), datetime('now')),
+  ('GBPUSD', 'USD', '0.00001', '1', '100000', '0.01', '100', '0.01', '0', '0',
+   'user_entered', datetime('now'), datetime('now')),
+  ('USDJPY', 'USD', '0.001', '1', '100000', '0.01', '100', '0.01', '0', '0',
+   'user_entered', datetime('now'), datetime('now')),
+  ('XAUUSD', 'USD', '0.01', '1', '100', '0.01', '50', '0.01', '0', '0',
+   'user_entered', datetime('now'), datetime('now')),
+  ('BTCUSD', 'USD', '0.01', '1', '1', '0.01', '10', '0.01', '0', '0',
+   'user_entered', datetime('now'), datetime('now')),
+  ('NAS100', 'USD', '0.01', '1', '1', '0.1', '50', '0.1', '0', '0',
+   'user_entered', datetime('now'), datetime('now'));
+"#;
+
+const MIGRATION_025: &str = r#"
+-- Additional instruments (forex majors, crosses, metals, indices).
+-- All specs are source='user_entered' by default — user should verify against broker.
+INSERT OR IGNORE INTO instruments
+  (symbol, currency, tick_size, tick_value, contract_size,
+   min_qty, max_qty, lot_step, commission_per_lot, slippage_per_unit,
+   spec_source, created_at, updated_at)
+VALUES
+  ('AUDUSD', 'USD', '0.00001', '1', '100000', '0.01', '100', '0.01', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('USDCAD', 'USD', '0.00001', '1', '100000', '0.01', '100', '0.01', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('USDCHF', 'USD', '0.00001', '1', '100000', '0.01', '100', '0.01', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('NZDUSD', 'USD', '0.00001', '1', '100000', '0.01', '100', '0.01', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('CHFJPY', 'USD', '0.001', '1', '100000', '0.01', '100', '0.01', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('EURJPY', 'USD', '0.001', '1', '100000', '0.01', '100', '0.01', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('GBPJPY', 'USD', '0.001', '1', '100000', '0.01', '100', '0.01', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('EURGBP', 'USD', '0.00001', '1', '100000', '0.01', '100', '0.01', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('XAGUSD', 'USD', '0.001', '1', '5000', '0.01', '50', '0.01', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('ETHUSD', 'USD', '0.01', '1', '1', '0.01', '100', '0.01', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('US30',   'USD', '0.1', '1', '1', '0.1', '50', '0.1', '0', '0', 'user_entered', datetime('now'), datetime('now')),
+  ('SPX500', 'USD', '0.1', '1', '1', '0.1', '50', '0.1', '0', '0', 'user_entered', datetime('now'), datetime('now'));
+"#;
+
+const MIGRATION_026: &str = r#"
+-- Correct tick_value for seed instruments.
+-- All values are in USD (account currency for seed).
+-- For crosses/metals/indices, tick_value is computed as:
+--   contract_size × tick_size × (quote_to_account_rate)
+-- Approximate values used below — user must verify against broker.
+UPDATE instruments SET tick_size = '0.00001', tick_value = '1', contract_size = '100000', lot_step = '0.01'
+  WHERE symbol IN ('EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD');
+UPDATE instruments SET tick_size = '0.001',   tick_value = '1', contract_size = '100000', lot_step = '0.01'
+  WHERE symbol IN ('USDJPY', 'EURJPY', 'GBPJPY', 'CHFJPY');
+UPDATE instruments SET tick_size = '0.00001', tick_value = '0.73', contract_size = '100000', lot_step = '0.01'
+  WHERE symbol = 'USDCAD';
+UPDATE instruments SET tick_size = '0.00001', tick_value = '0.79', contract_size = '100000', lot_step = '0.01'
+  WHERE symbol = 'USDCHF';
+UPDATE instruments SET tick_size = '0.00001', tick_value = '1.27', contract_size = '100000', lot_step = '0.01'
+  WHERE symbol = 'EURGBP';
+UPDATE instruments SET tick_size = '0.01', tick_value = '1', contract_size = '100', lot_step = '0.01'
+  WHERE symbol = 'XAUUSD';
+UPDATE instruments SET tick_size = '0.001', tick_value = '5', contract_size = '5000', lot_step = '0.01'
+  WHERE symbol = 'XAGUSD';
+UPDATE instruments SET tick_size = '0.01', tick_value = '0.01', contract_size = '1', lot_step = '0.01'
+  WHERE symbol IN ('BTCUSD', 'BTCUSDT');
+UPDATE instruments SET tick_size = '0.01', tick_value = '0.01', contract_size = '1', lot_step = '0.01'
+  WHERE symbol = 'ETHUSD';
+UPDATE instruments SET tick_size = '0.1', tick_value = '0.1', contract_size = '1', lot_step = '0.1'
+  WHERE symbol IN ('NAS100', 'SPX500', 'US30');
+"#;
+
+
+
 
 
 

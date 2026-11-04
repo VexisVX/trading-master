@@ -753,13 +753,7 @@
   color: var(--muted, #888);
   margin-bottom: 6px;
 }
-.ee-risk-hero__value {
-  font-size: 38px;
-  font-weight: 700;
-  color: var(--accent, #2dd4bf);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
+
 .ee-risk-hero__meta {
   margin-top: 8px;
   font-size: 12px;
@@ -946,9 +940,7 @@
 }
 
 @media (max-width: 720px) {
-  .ee-risk-hero__value {
-    font-size: 30px;
-  }
+  
   .ee-risk-floors {
     grid-template-columns: 1fr;
   }
@@ -1197,23 +1189,11 @@
 }
 
 /* S8 — State badge */
-.ee-state-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  margin-top: 8px;
-  background: #f3f4f6;
-  color: #374151;
-  border: 1px solid #e5e7eb;
-}
-.ee-state-badge--ok    { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
-.ee-state-badge--warn  { background: #fffbeb; color: #92400e; border-color: #fde68a; }
-.ee-state-badge--bad   { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
-.ee-state-badge--muted { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
+
+
+
+
+
 .ee-state-badge__icon  { font-size: 14px; }
 .ee-state-badge__label { letter-spacing: 0.2px; }
 
@@ -1226,3 +1206,752 @@
 .ee-risk-floors__row:last-child { border-bottom: none; }
 .ee-risk-floors__label { font-size: 12px; color: #6b7280; }
 .ee-risk-floors__value { font-family: ui-monospace, monospace; font-size: 12px; color: #111827; }
+
+/* ============================================================
+ * Account Profile section — dark-theme safe
+ * ============================================================ */
+
+.ee-profile-section {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border, #232c38);
+  color: var(--text-0, #e6edf3);
+}
+
+.ee-profile-section .section-title {
+  color: var(--text-0, #e6edf3);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.ee-profile-section .settings__hint {
+  color: var(--text-1, #9aa7b4);
+  font-size: 12px;
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+
+.ee-profile-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.ee-profile-row__label {
+  min-width: 130px;
+  font-size: 13px;
+  color: var(--text-0, #e6edf3);
+  font-weight: 500;
+}
+
+.ee-profile-row__hint {
+  font-size: 11px;
+  color: var(--text-1, #9aa7b4);
+}
+
+.ee-profile-row .input,
+.ee-profile-row select,
+.ee-profile-row input[type="number"] {
+  background: var(--bg-2, #161d26);
+  color: var(--text-0, #e6edf3);
+  border: 1px solid var(--border, #232c38);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: var(--mono, monospace);
+  min-width: 100px;
+}
+
+.ee-profile-row .input:focus,
+.ee-profile-row select:focus,
+.ee-profile-row input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent, #2dd4bf);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(45, 212, 191, 0.12));
+}
+
+.ee-profile-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.ee-profile-saved {
+  font-size: 12px;
+  color: var(--success, #34d399);
+}
+
+.ee-profile-error {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--danger, #f87171);
+  background: var(--bg-2, #161d26);
+  border: 1px solid var(--danger, #f87171);
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.ee-profile-derived {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--bg-1, #11161d);
+  border: 1px solid var(--border, #232c38);
+  border-radius: 8px;
+  color: var(--text-0, #e6edf3);
+}
+
+.ee-profile-derived__title {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  color: var(--accent, #2dd4bf);
+}
+
+.ee-profile-derived__table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.ee-profile-derived__table td {
+  padding: 5px 0;
+  color: var(--text-0, #e6edf3);
+}
+
+.ee-profile-derived__table td:first-child {
+  color: var(--text-1, #9aa7b4);
+  padding-right: 16px;
+  min-width: 130px;
+}
+
+.ee-profile-derived__table td:last-child {
+  font-family: var(--mono, monospace);
+  text-align: right;
+  color: var(--text-0, #e6edf3);
+  font-weight: 500;
+}
+
+/* Override any global light-theme input styles inside the modal */
+.ee-modal .ee-profile-section input,
+.ee-modal .ee-profile-section select,
+.ee-modal .ee-profile-section button {
+  color-scheme: dark;
+}
+
+
+
+/* ============================================================
+ * FINAL OVERRIDE — Account Profile (must win over any global)
+ * ============================================================ */
+
+html .ee-modal .ee-profile-section,
+html .ee-modal .ee-profile-section * {
+  color: var(--text-0, #e6edf3) !important;
+}
+
+html .ee-modal .ee-profile-section .ee-profile-row__label,
+html .ee-modal .ee-profile-section .section-title,
+html .ee-modal .ee-profile-section .ee-profile-derived__title {
+  color: var(--text-0, #e6edf3) !important;
+}
+
+html .ee-modal .ee-profile-section .settings__hint,
+html .ee-modal .ee-profile-section .ee-profile-row__hint,
+html .ee-modal .ee-profile-section .ee-profile-derived__table td:first-child {
+  color: var(--text-1, #9aa7b4) !important;
+}
+
+html .ee-modal .ee-profile-section .ee-profile-derived__title {
+  color: var(--accent, #2dd4bf) !important;
+}
+
+html .ee-modal .ee-profile-section select,
+html .ee-modal .ee-profile-section input[type="number"],
+html .ee-modal .ee-profile-section input[type="text"],
+html .ee-modal .ee-profile-section input.input {
+  background: var(--bg-2, #161d26) !important;
+  color: var(--text-0, #e6edf3) !important;
+  border: 1px solid var(--border, #232c38) !important;
+  color-scheme: dark !important;
+}
+
+html .ee-modal .ee-profile-section select option {
+  background: var(--bg-1, #11161d) !important;
+  color: var(--text-0, #e6edf3) !important;
+}
+
+html .ee-modal .ee-profile-derived {
+  background: var(--bg-1, #11161d) !important;
+  border: 1px solid var(--border, #232c38) !important;
+  color: var(--text-0, #e6edf3) !important;
+}
+
+html .ee-modal .ee-profile-derived__table td,
+html .ee-modal .ee-profile-derived__table td:last-child {
+  color: var(--text-0, #e6edf3) !important;
+}
+
+
+/* ============================================================
+ * Risk Intelligence — big number color (light theme friendly)
+ * ============================================================ */
+
+/* Dark theme: keep accent */
+.ee-risk-intel__value,
+.ee-risk-intel__big,
+.ee-risk-now-value,
+.ee-risk-number {
+  color: var(--accent, #2dd4bf) !important;
+  font-weight: 600;
+}
+
+/* Light theme: darker accent for readability */
+[data-theme="light"] .ee-risk-intel__value,
+[data-theme="light"] .ee-risk-intel__big,
+[data-theme="light"] .ee-risk-now-value,
+[data-theme="light"] .ee-risk-number,
+.light-theme .ee-risk-intel__value,
+.light-theme .ee-risk-intel__big,
+.light-theme .ee-risk-now-value,
+.light-theme .ee-risk-number {
+  color: var(--accent, #0891b2) !important;
+}
+
+/* The subtitle "0.38% of equity · limited by Target" */
+.ee-risk-intel__caption,
+.ee-risk-intel__meta,
+.ee-risk-now-caption {
+  color: var(--text-1, #9aa7b4) !important;
+}
+
+[data-theme="light"] .ee-risk-intel__caption,
+[data-theme="light"] .ee-risk-intel__meta,
+[data-theme="light"] .ee-risk-now-caption {
+  color: var(--text-1, #374151) !important;
+}
+
+
+
+/* ============================================================
+ * CREAM THEME — targeted fixes (badge, hero, ghost button)
+ * ============================================================ */
+
+/* 1) State badge — replace cream-ish warn with proper dark bg */
+[data-theme="cream"] 
+
+[data-theme="cream"] 
+
+[data-theme="cream"] 
+
+[data-theme="cream"] 
+
+[data-theme="cream"] 
+
+/* 2) Hero value (18.76) — dark accent */
+
+
+/* 3) Ghost button (Refresh, etc.) — darker bg for readability */
+[data-theme="cream"] .ee-btn--ghost,
+[data-theme="cream"] .ee-btn--ghost:hover {
+  background: #e5dbc8 !important;
+  color: #3a2f20 !important;
+  border: 1px solid #c8bca1 !important;
+}
+
+[data-theme="cream"] .ee-btn--ghost:hover {
+  background: #d8cbaf !important;
+  color: #2e2418 !important;
+}
+
+/* 4) All card titles / subtitles in cream */
+[data-theme="cream"] .ee-card__title,
+[data-theme="cream"] .ee-card__subtitle,
+[data-theme="cream"] .ee-modal__title {
+  color: #2e2418 !important;
+}
+
+[data-theme="cream"] .ee-card__subtitle {
+  color: #4a3f2e !important;
+}
+
+/* 5) Risk intelligence labels (MAX RISK RIGHT NOW, HOW WE GOT HERE) */
+[data-theme="cream"] .ee-risk-hero__label,
+[data-theme="cream"] .ee-risk-section__title,
+[data-theme="cream"] .ee-risk-multiplier__label {
+  color: #4a3f2e !important;
+  font-weight: 600;
+}
+
+/* 6) Risk multiplier values (Base risk, Drawdown multiplier, Loss-streak) */
+[data-theme="cream"] .ee-risk-multiplier__value,
+[data-theme="cream"] .ee-risk-multiplier__result {
+  color: #2e2418 !important;
+}
+
+/* 7) Small labels / hints */
+[data-theme="cream"] .ee-risk-hero__caption,
+[data-theme="cream"] .ee-risk-hero__meta,
+[data-theme="cream"] .ee-muted,
+[data-theme="cream"] .ee-hint,
+[data-theme="cream"] .ee-label,
+[data-theme="cream"] .ee-trace__label,
+[data-theme="cream"] .ee-risk-floors__label,
+[data-theme="cream"] .ee-simple-field__hint,
+[data-theme="cream"] .ee-simple-field__example,
+[data-theme="cream"] .ee-profile-row__hint,
+[data-theme="cream"] .ee-profile-section .settings__hint,
+[data-theme="cream"] .ee-profile-derived__table td:first-child {
+  color: #4a3f2e !important;
+}
+
+/* 8) Result values / primary values */
+[data-theme="cream"] .ee-result__value,
+[data-theme="cream"] .ee-trace__value,
+[data-theme="cream"] .ee-risk-floors__value,
+[data-theme="cream"] .ee-simple-field__label,
+[data-theme="cream"] .ee-simple-field__value,
+[data-theme="cream"] .ee-profile-derived__title,
+[data-theme="cream"] .ee-profile-derived__table td {
+  color: #2e2418 !important;
+}
+
+/* 9) Inputs and selects in cream */
+[data-theme="cream"] input,
+[data-theme="cream"] select,
+[data-theme="cream"] textarea {
+  background-color: #faf6ed !important;
+  color: #2e2418 !important;
+  border: 1px solid #c8bca1 !important;
+}
+
+/* 10) Card backgrounds — keep cream but ensure contrast */
+[data-theme="cream"] .ee-card {
+  background: #faf6ed !important;
+  border: 1px solid #e0d6c2 !important;
+}
+
+[data-theme="cream"] .ee-profile-derived {
+  background: #efe7d8 !important;
+  border: 1px solid #e0d6c2 !important;
+}
+
+
+/* ============================================================
+ * Hero value (.ee-risk-hero__value) — single accent color
+ * Same in dark, light, cream, dim, amoled
+ * ============================================================ */
+
+
+
+
+
+/* ============================================================
+ * Hero value (.ee-risk-hero__value) — large readable number
+ * ============================================================ */
+
+
+
+
+
+/* ============================================================
+ * HERO VALUE (.ee-risk-hero__value) — large number, accent color
+ * ============================================================ */
+
+.ee-risk-hero__value {
+  color: var(--accent, #2dd4bf) !important;
+  font-weight: 700 !important;
+  font-size: 48px !important;
+  line-height: 1.05 !important;
+  letter-spacing: -1px;
+  font-family: var(--mono, ui-monospace, monospace) !important;
+}
+
+/* ============================================================
+ * STATE BADGE — all 5 themes (dark, light, cream, dim, amoled)
+ * ============================================================ */
+
+/* Base structure */
+.ee-state-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.ee-state-badge__icon { font-size: 13px; }
+
+/* --- DARK (default) --- */
+:root .ee-state-badge--ok,
+[data-theme="dark"] .ee-state-badge--ok {
+  background: rgba(52, 211, 153, 0.15) !important;
+  color: #34d399 !important;
+  border-color: rgba(52, 211, 153, 0.35) !important;
+}
+:root .ee-state-badge--warn,
+[data-theme="dark"] .ee-state-badge--warn {
+  background: rgba(251, 191, 36, 0.15) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(251, 191, 36, 0.4) !important;
+}
+:root .ee-state-badge--bad,
+[data-theme="dark"] .ee-state-badge--bad {
+  background: rgba(248, 113, 113, 0.15) !important;
+  color: #f87171 !important;
+  border-color: rgba(248, 113, 113, 0.4) !important;
+}
+:root .ee-state-badge--muted,
+[data-theme="dark"] .ee-state-badge--muted {
+  background: rgba(154, 167, 180, 0.12) !important;
+  color: #9aa7b4 !important;
+  border-color: rgba(154, 167, 180, 0.3) !important;
+}
+
+/* --- DIM --- */
+[data-theme="dim"] .ee-state-badge--ok {
+  background: rgba(52, 211, 153, 0.18) !important;
+  color: #6ee7b7 !important;
+  border-color: rgba(52, 211, 153, 0.4) !important;
+}
+[data-theme="dim"] .ee-state-badge--warn {
+  background: rgba(251, 191, 36, 0.18) !important;
+  color: #fcd34d !important;
+  border-color: rgba(251, 191, 36, 0.45) !important;
+}
+[data-theme="dim"] .ee-state-badge--bad {
+  background: rgba(248, 113, 113, 0.18) !important;
+  color: #fca5a5 !important;
+  border-color: rgba(248, 113, 113, 0.45) !important;
+}
+[data-theme="dim"] .ee-state-badge--muted {
+  background: rgba(184, 192, 204, 0.15) !important;
+  color: #b8c0cc !important;
+  border-color: rgba(184, 192, 204, 0.35) !important;
+}
+
+/* --- AMOLED --- */
+[data-theme="amoled"] .ee-state-badge--ok {
+  background: rgba(52, 211, 153, 0.12) !important;
+  color: #34d399 !important;
+  border-color: #34d399 !important;
+}
+[data-theme="amoled"] .ee-state-badge--warn {
+  background: rgba(251, 191, 36, 0.12) !important;
+  color: #fbbf24 !important;
+  border-color: #fbbf24 !important;
+}
+[data-theme="amoled"] .ee-state-badge--bad {
+  background: rgba(248, 113, 113, 0.12) !important;
+  color: #f87171 !important;
+  border-color: #f87171 !important;
+}
+[data-theme="amoled"] .ee-state-badge--muted {
+  background: rgba(176, 176, 176, 0.1) !important;
+  color: #b0b0b0 !important;
+  border-color: #808080 !important;
+}
+
+/* --- LIGHT --- */
+[data-theme="light"] .ee-state-badge--ok {
+  background: #d1fae5 !important;
+  color: #065f46 !important;
+  border-color: #6ee7b7 !important;
+}
+[data-theme="light"] .ee-state-badge--warn {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  border-color: #fcd34d !important;
+}
+[data-theme="light"] .ee-state-badge--bad {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+  border-color: #fca5a5 !important;
+}
+[data-theme="light"] .ee-state-badge--muted {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* --- CREAM --- */
+[data-theme="cream"] .ee-state-badge--ok {
+  background: #d1e7d0 !important;
+  color: #14532d !important;
+  border-color: #86c48c !important;
+}
+[data-theme="cream"] .ee-state-badge--warn {
+  background: #f5e0b0 !important;
+  color: #78350f !important;
+  border-color: #d4a843 !important;
+}
+[data-theme="cream"] .ee-state-badge--bad {
+  background: #f5cfcf !important;
+  color: #7f1d1d !important;
+  border-color: #d88a8a !important;
+}
+[data-theme="cream"] .ee-state-badge--muted {
+  background: #e5dbc8 !important;
+  color: #4a3f2e !important;
+  border-color: #c8bca1 !important;
+}
+
+
+/* ============================================================
+ * Instrument management UI (PHASE 2.1)
+ * ============================================================ */
+
+.ee-instruments { padding: 16px 20px; }
+
+.ee-inst-hint {
+  background: var(--bg-1, #11161d);
+  border: 1px solid var(--border, #232c38);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--text-1, #9aa7b4);
+  line-height: 1.6;
+}
+.ee-inst-hint strong { color: var(--text-0, #e6edf3); }
+.ee-inst-hint ul { margin: 6px 0 8px 18px; padding: 0; }
+.ee-inst-hint__warn {
+  color: var(--warning, #fbbf24);
+  font-size: 11px;
+  margin: 8px 0 0;
+}
+
+.ee-inst-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.ee-inst-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ee-inst-field__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-1, #9aa7b4);
+}
+.ee-inst-field__hint {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--text-2, #6b7886);
+  font-size: 11px;
+}
+
+.ee-inst-field input,
+.ee-inst-field select {
+  background: var(--bg-2, #161d26);
+  color: var(--text-0, #e6edf3);
+  border: 1px solid var(--border, #232c38);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: var(--mono, ui-monospace, monospace);
+  width: 100%;
+  box-sizing: border-box;
+}
+.ee-inst-field input:focus,
+.ee-inst-field select:focus {
+  outline: none;
+  border-color: var(--accent, #2dd4bf);
+}
+
+.ee-inst-table-wrap {
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border, #232c38);
+  position: relative;
+}
+
+/* Sticky header — stays visible while scrolling */
+.ee-inst-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ee-inst-table thead th {
+  background: var(--bg-1, #11161d);
+  backdrop-filter: blur(6px);
+}
+
+/* Scrollbar — themed */
+.ee-inst-table-wrap::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.ee-inst-table-wrap::-webkit-scrollbar-track {
+  background: var(--bg-2, #161d26);
+  border-radius: 4px;
+}
+.ee-inst-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--border, #232c38);
+  border-radius: 4px;
+}
+.ee-inst-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: var(--text-2, #6b7886);
+}
+
+/* Dark theme */
+[data-theme="dark"] .ee-inst-table thead th,
+:root .ee-inst-table thead th {
+  background: var(--bg-1, #11161d);
+}
+
+/* Dim theme */
+[data-theme="dim"] .ee-inst-table thead th {
+  background: var(--bg-1, #222831);
+}
+[data-theme="dim"] .ee-inst-table-wrap::-webkit-scrollbar-track {
+  background: var(--bg-2, #2b323d);
+}
+
+/* Amoled theme */
+[data-theme="amoled"] .ee-inst-table thead th {
+  background: var(--bg-1, #050505);
+}
+
+/* Light theme */
+[data-theme="light"] .ee-inst-table thead th {
+  background: #f1f5f9;
+}
+[data-theme="light"] .ee-inst-table-wrap {
+  border-color: #cbd5e1;
+}
+[data-theme="light"] .ee-inst-table-wrap::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+[data-theme="light"] .ee-inst-table-wrap::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+/* Cream theme */
+[data-theme="cream"] .ee-inst-table thead th {
+  background: #efe7d8;
+}
+[data-theme="cream"] .ee-inst-table-wrap {
+  border-color: #e0d6c2;
+}
+[data-theme="cream"] .ee-inst-table-wrap::-webkit-scrollbar-track {
+  background: #efe7d8;
+}
+[data-theme="cream"] .ee-inst-table-wrap::-webkit-scrollbar-thumb {
+  background: #c8bca1;
+}
+
+.ee-inst-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ee-inst-table thead {
+  background: var(--bg-1, #11161d);
+}
+
+.ee-inst-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-1, #9aa7b4);
+  border-bottom: 1px solid var(--border, #232c38);
+}
+
+.ee-inst-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border, #232c38);
+  color: var(--text-0, #e6edf3);
+  font-size: 12px;
+}
+
+.ee-inst-table tbody tr:hover {
+  background: var(--bg-2, #161d26);
+}
+
+.ee-inst-source {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.ee-inst-source--verified {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+}
+.ee-inst-source--user_entered {
+  background: rgba(45, 212, 191, 0.15);
+  color: var(--accent, #2dd4bf);
+}
+.ee-inst-source--estimated {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+/* --- Light theme --- */
+[data-theme="light"] .ee-inst-hint {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+[data-theme="light"] .ee-inst-hint strong { color: #0f172a; }
+[data-theme="light"] .ee-inst-field__label { color: #475569; }
+[data-theme="light"] .ee-inst-field input,
+[data-theme="light"] .ee-inst-field select {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+[data-theme="light"] .ee-inst-table thead { background: #f1f5f9; }
+[data-theme="light"] .ee-inst-table th { color: #475569; }
+[data-theme="light"] .ee-inst-table td { color: #0f172a; border-color: #e2e8f0; }
+[data-theme="light"] .ee-inst-table tbody tr:hover { background: #f1f5f9; }
+[data-theme="light"] .ee-inst-source--verified { background: #d1fae5; color: #065f46; }
+[data-theme="light"] .ee-inst-source--user_entered { background: #cffafe; color: #0891b2; }
+[data-theme="light"] .ee-inst-source--estimated { background: #fef3c7; color: #92400e; }
+
+/* --- Cream theme --- */
+[data-theme="cream"] .ee-inst-hint {
+  background: #efe7d8;
+  border-color: #e0d6c2;
+  color: #4a3f2e;
+}
+[data-theme="cream"] .ee-inst-hint strong { color: #2e2418; }
+[data-theme="cream"] .ee-inst-field__label { color: #4a3f2e; }
+[data-theme="cream"] .ee-inst-field__hint { color: #6b5d47; }
+[data-theme="cream"] .ee-inst-field input,
+[data-theme="cream"] .ee-inst-field select {
+  background: #faf6ed;
+  color: #2e2418;
+  border-color: #c8bca1;
+}
+[data-theme="cream"] .ee-inst-table thead { background: #efe7d8; }
+[data-theme="cream"] .ee-inst-table th { color: #4a3f2e; }
+[data-theme="cream"] .ee-inst-table td { color: #2e2418; border-color: #e0d6c2; }
+[data-theme="cream"] .ee-inst-table tbody tr:hover { background: #efe7d8; }
+[data-theme="cream"] .ee-inst-source--verified { background: #d1e7d0; color: #14532d; }
+[data-theme="cream"] .ee-inst-source--user_entered { background: #d4ecec; color: #0e7490; }
+[data-theme="cream"] .ee-inst-source--estimated { background: #f5e0b0; color: #78350f; }
