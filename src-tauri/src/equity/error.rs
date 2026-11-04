@@ -38,6 +38,7 @@ pub enum DecisionReason {
     InvalidConfig(String),
     InstrumentNotFound { symbol: String },
     BelowMinimumQuantity { min_qty: String, allowed_risk: String, actual_risk: String },
+    MarketDataIncomplete { reason: String },
 }
 
 

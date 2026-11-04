@@ -62,6 +62,9 @@ pub struct DecisionOut {
     pub f_prop: String,
     pub snapshot_id: Option<i64>,
     pub risk_detail: Option<RiskDetail>,
+    pub sizing_source: String,
+    pub actual_risk: Option<String>,
+    pub instrument_symbol: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -292,6 +295,36 @@ pub fn equity_evaluate(
     let state_acct = AccountState::from_snapshot_with_profile(parsed, &cfg, profile_opt.as_ref())
         .map_err(|e| format!("state: {e}"))?;
 
+    // PHASE 2.2-C: reject if daily data is incomplete/stale
+    // This is a data-quality block, NOT a PreservationPause.
+    if let Err(e) = check_daily_data_quality(&conn, account_id, &state_acct, &cfg) {
+        let reason = crate::equity::error::DecisionReason::MarketDataIncomplete {
+            reason: e.to_string(),
+        };
+        return Ok(DecisionOut {
+            allowed: false,
+            reason,
+            r_allowed: "".into(),
+            size: None,
+            rr: None,
+            phase: phase_str(state_acct.phase).to_string(),
+            dd_pct: state_acct.dd_pct.to_string(),
+            f_hybrid: state_acct.f_hybrid.to_string(),
+            loss_capacity: state_acct.loss_capacity.to_string(),
+            state: state_acct.state_enum.as_str().to_string(),
+            state_enum: state_acct.state_enum.as_str().to_string(),
+            buffer_r: state_acct.buffer_r.to_string(),
+            m_preserve: state_acct.m_preserve.to_string(),
+            f_internal: state_acct.f_internal.to_string(),
+            f_prop: state_acct.f_prop.to_string(),
+            snapshot_id: Some(snap_row.id),
+            risk_detail: None,
+            sizing_source: "none".into(),
+            actual_risk: None,
+            instrument_symbol: None,
+        });
+    }
+
     // 2. Build proposal (clone original for later risk_detail)
     let proposal_for_detail = proposal.clone();
     // 2. Build proposal (S2.1: symbol optional, legacy fallback)
@@ -404,6 +437,9 @@ pub fn equity_evaluate(
                 binding_constraint: r.binding.to_string(),
             }
         }),
+        sizing_source: decision.sizing_source.clone(),
+        actual_risk: decision.actual_risk.clone(),
+        instrument_symbol: decision.instrument_symbol.clone(),
     })
 }
 
@@ -562,32 +598,117 @@ pub fn equity_auto_snapshot_create(
     }
     eprintln!("[AUTO_SNAPSHOT] streak = {}", streak);
 
-    // ============================================================
-    // 5. Daily loss
-    // ============================================================
+    // Day-start equity: if there's a previous snapshot from earlier today
+    // (in the reset boundary), use its day_start_equity; else use current equity.
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let mut daily_loss = Decimal::ZERO;
+    let day_start: Decimal = match &prev {
+        Some(p) => {
+            let prev_day = p.taken_at.chars().take(10).collect::<String>();
+            if prev_day == today {
+                Decimal::from_str(&p.day_start_equity).unwrap_or(equity)
+            } else {
+                equity
+            }
+        }
+        None => equity,
+    };
+
+    // ============================================================
+    // 5. Daily loss (PHASE 2.2-C: full daily::compute)
+    // ============================================================
+    // Load all trades for this account
+    let all_trades: Vec<crate::domain::trade::Trade> = {
+        let mut stmt = conn
+            .prepare("SELECT id FROM trades WHERE account_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let ids: Vec<i64> = stmt
+            .query_map([acc_id], |r| r.get(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Ok(Some(t)) = crate::db::trades::get_trade(&conn, id) {
+                out.push(t);
+            }
+        }
+        out
+    };
+
+    // Load instruments
+    let mut instruments: std::collections::HashMap<String, crate::domain::instrument::InstrumentSpec> =
+        std::collections::HashMap::new();
     {
         let mut stmt = conn
+            .prepare("SELECT symbol FROM instruments")
+            .map_err(|e| e.to_string())?;
+        let syms: Vec<String> = stmt
+            .query_map([], |r| r.get(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        for sym in syms {
+            if let Ok(Some(spec)) = crate::db::instruments::get_typed(&conn, &sym) {
+                instruments.insert(sym, spec);
+            }
+        }
+    }
+
+    // Reset boundary from config (PHASE 2.2-B)
+    let reset_b = crate::equity::reset::from_config(&cfg);
+    let now = chrono::Utc::now();
+    let day_start_time = crate::equity::reset::last_boundary(&reset_b, now);
+
+    // External cash flows since reset
+    let external_cash_flows = {
+        let mut stmt = conn
             .prepare(
-                "SELECT manual_pnl FROM trades WHERE account_id = ?1 AND status = 'closed'
-                 AND substr(COALESCE(closed_at, updated_at), 1, 10) = ?2",
+                "SELECT amount, kind FROM account_cash_flows
+                 WHERE account_id = ?1 AND occurred_at >= ?2"
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(rusqlite::params![acc_id, today], |r| r.get::<_, Option<String>>(0))
+            .query_map(
+                rusqlite::params![acc_id, day_start_time.to_rfc3339()],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            )
             .map_err(|e| e.to_string())?;
+        let mut net = Decimal::ZERO;
         for row in rows {
-            if let Ok(Some(s)) = row {
-                if let Ok(d) = Decimal::from_str(&s) {
-                    if d < Decimal::ZERO {
-                        daily_loss += d.abs();
+            if let Ok((amt_s, kind)) = row {
+                if let Ok(amt) = Decimal::from_str(&amt_s) {
+                    match kind.as_str() {
+                        "deposit" | "funding" => net += amt,
+                        "withdrawal" | "fee" => net -= amt,
+                        _ => {}
                     }
                 }
             }
         }
-    }
-    eprintln!("[AUTO_SNAPSHOT] daily_loss = {}", daily_loss);
+        net
+    };
+
+    let daily_result = crate::equity::daily::compute(&crate::equity::daily::DailyPnLInput {
+        trades: &all_trades,
+        day_start_equity: day_start,  // from earlier in the function
+        current_equity: equity,
+        external_cash_flows,
+        day_start_time,
+        instruments: &instruments,
+        max_price_age_minutes: cfg.max_price_age_minutes,
+        now,
+        daily_loss_limit: Decimal::from_str(&cfg.daily_loss_limit).unwrap_or(Decimal::ZERO) * equity,
+        execution_buffer: Decimal::ZERO,
+    });
+
+    let (daily_loss, daily_error) = match daily_result {
+        Ok(d) => (d.daily_loss_used, None::<String>),
+        Err(e) => {
+            eprintln!("[AUTO_SNAPSHOT] daily::compute error: {}", e);
+            (Decimal::ZERO, Some(e.to_string()))
+        }
+    };
+    eprintln!("[AUTO_SNAPSHOT] daily_loss = {} (error: {:?})", daily_loss, daily_error);
 
     // ============================================================
     // 6. Open risk
@@ -1401,4 +1522,74 @@ pub fn equity_instrument_delete(
     conn.execute("DELETE FROM instruments WHERE symbol = ?1", [&symbol])
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+
+// ============================================================
+// PHASE 2.2-C: daily data quality check
+// ============================================================
+
+fn check_daily_data_quality(
+    conn: &rusqlite::Connection,
+    account_id: Option<i64>,
+    state: &crate::equity::state::AccountState,
+    cfg: &EquityConfig,
+) -> Result<(), crate::equity::error::DailyPnLError> {
+    use std::collections::HashMap;
+
+    let aid = match account_id {
+        Some(a) => a,
+        None => return Ok(()),  // no account scope → skip check
+    };
+
+    // Load all trades
+    let mut stmt = conn
+        .prepare("SELECT id FROM trades WHERE account_id = ?1")
+        .map_err(|e| crate::equity::error::DailyPnLError::ComputeError(e.to_string()))?;
+    let ids: Vec<i64> = stmt
+        .query_map([aid], |r| r.get(0))
+        .map_err(|e| crate::equity::error::DailyPnLError::ComputeError(e.to_string()))?
+        .collect::<Result<_, _>>()
+        .map_err(|e| crate::equity::error::DailyPnLError::ComputeError(e.to_string()))?;
+    let mut trades = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Ok(Some(t)) = crate::db::trades::get_trade(conn, id) {
+            trades.push(t);
+        }
+    }
+
+    // Load instruments
+    let mut instruments: HashMap<String, crate::domain::instrument::InstrumentSpec> = HashMap::new();
+    let mut stmt2 = conn
+        .prepare("SELECT symbol FROM instruments")
+        .map_err(|e| crate::equity::error::DailyPnLError::ComputeError(e.to_string()))?;
+    let syms: Vec<String> = stmt2
+        .query_map([], |r| r.get(0))
+        .map_err(|e| crate::equity::error::DailyPnLError::ComputeError(e.to_string()))?
+        .collect::<Result<_, _>>()
+        .map_err(|e| crate::equity::error::DailyPnLError::ComputeError(e.to_string()))?;
+    for sym in syms {
+        if let Ok(Some(spec)) = crate::db::instruments::get_typed(conn, &sym) {
+            instruments.insert(sym, spec);
+        }
+    }
+
+    let reset_b = crate::equity::reset::from_config(cfg);
+    let now = chrono::Utc::now();
+    let day_start_time = crate::equity::reset::last_boundary(&reset_b, now);
+
+    let inp = crate::equity::daily::DailyPnLInput {
+        trades: &trades,
+        day_start_equity: state.snapshot.equity,
+        current_equity: state.snapshot.equity,
+        external_cash_flows: Decimal::ZERO,
+        day_start_time,
+        instruments: &instruments,
+        max_price_age_minutes: cfg.max_price_age_minutes,
+        now,
+        daily_loss_limit: Decimal::ZERO,
+        execution_buffer: Decimal::ZERO,
+    };
+
+    crate::equity::daily::compute(&inp).map(|_| ())
 }
