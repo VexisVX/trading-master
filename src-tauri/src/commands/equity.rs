@@ -70,20 +70,14 @@ pub struct DecisionOut {
 #[derive(Debug, Serialize)]
 pub struct RiskDetail {
     pub equity: String,
-    // legacy (S8)
     pub r_base: String,
-    pub m_dd: String,
-    pub m_loss: String,
-    pub r_adaptive: String,
     pub r_portfolio_cap: String,
     pub r_daily_cap: String,
-    pub r_floor_cap: String,
     pub r_prop_cap: String,
     pub r_allowed: String,
     pub entry_minus_stop: String,
     pub contract_multiplier: String,
     pub per_unit_cost: String,
-    // new (S8)
     pub buffer_r: String,
     pub m_preserve: String,
     pub f_internal: String,
@@ -263,8 +257,10 @@ pub fn equity_evaluate(
     account_id: Option<i64>,
     proposal: Option<ProposalInput>,
 ) -> Result<DecisionOut, String> {
+    eprintln!("[EVALUATE] START account_id={:?} has_proposal={}", account_id, proposal.is_some());
     // 1. Load config + latest snapshot
     let cfg = load_or_default_config(&state)?;
+    eprintln!("[EVALUATE] config loaded");
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let snap_row = repo::latest_snapshot(&conn, account_id)
         .map_err(|e| e.to_string())?
@@ -295,9 +291,9 @@ pub fn equity_evaluate(
         }
     };
     // PHASE 5: load recovery authorization
+    // NOTE: use the already-locked `conn` — do NOT re-lock `state.db`.
     let recovery_active = if let Some(aid) = account_id {
-        let conn2 = state.db.lock().map_err(|e| e.to_string())?;
-        crate::db::recovery::get_active(&conn2, aid)
+        crate::db::recovery::get_active(&conn, aid)
             .ok()
             .flatten()
             .is_some()
@@ -308,9 +304,19 @@ pub fn equity_evaluate(
     let state_acct = AccountState::from_snapshot_with_recovery(
         parsed, &cfg, profile_opt.as_ref(), recovery_active
     ).map_err(|e| format!("state: {e}"))?;
+    eprintln!(
+        "[EVALUATE] state={} phase={:?} buffer_r={} m_preserve={} f_internal={} recovery={}",
+        state_acct.state_enum.as_str(),
+        state_acct.phase,
+        state_acct.buffer_r,
+        state_acct.m_preserve,
+        state_acct.f_internal,
+        recovery_active
+    );
 
     // PHASE 2.2-C: reject if daily data is incomplete/stale
     // This is a data-quality block, NOT a PreservationPause.
+    eprintln!("[EVALUATE] check_daily_data_quality...");
     if let Err(e) = check_daily_data_quality(&conn, account_id, &state_acct, &cfg) {
         let reason = crate::equity::error::DecisionReason::MarketDataIncomplete {
             reason: e.to_string(),
@@ -360,7 +366,12 @@ pub fn equity_evaluate(
     // 3. Evaluate
     let decision: TradeDecision =
         crate::equity::engine::evaluate_with_conn(&state_acct, &cfg, prop.as_ref(), Some(&conn))
-            .map_err(|e: EquityError| e.to_string())?;
+            .map_err(|e: EquityError| {
+        eprintln!("[EVALUATE] ENGINE ERROR: {}", e);
+        e.to_string()
+    })?;
+    eprintln!("[EVALUATE] decision allowed={} reason={:?} r_allowed={} size={:?}",
+        decision.allowed, decision.reason, decision.r_allowed, decision.size);
 
     // 4. Persist decision
     let cfg_json = serde_json::to_string(&cfg).map_err(|e| e.to_string())?;
@@ -380,15 +391,13 @@ pub fn equity_evaluate(
     let phase_for_db = phase_str(state_acct.phase).to_string();
 
     // PHASE 4: instrument audit
+    // PHASE 4: instrument audit — use the already-locked `conn`, do NOT re-lock.
     let (inst_sym_audit, inst_spec_audit) = match &decision.instrument_symbol {
         Some(sym) => {
-            let spec_json = {
-                let conn2 = state.db.lock().map_err(|e| e.to_string())?;
-                crate::db::instruments::get_typed(&conn2, sym)
-                    .ok()
-                    .flatten()
-                    .and_then(|s| serde_json::to_string(&s).ok())
-            };
+            let spec_json = crate::db::instruments::get_typed(&conn, sym)
+                .ok()
+                .flatten()
+                .and_then(|s| serde_json::to_string(&s).ok());
             (Some(sym.as_str()), spec_json)
         }
         None => (None, None),
@@ -411,7 +420,9 @@ pub fn equity_evaluate(
         instrument_symbol: inst_sym_audit,
         instrument_spec_json: inst_spec_audit.as_deref(),
     };
+    eprintln!("[EVALUATE] inserting decision...");
     let _ = repo::insert_decision(&conn, &drow);
+    eprintln!("[EVALUATE] DONE");
 
     // 5. Build output
 
@@ -454,12 +465,8 @@ pub fn equity_evaluate(
             RiskDetail {
                 equity: state_acct.snapshot.equity.to_string(),
                 r_base: r.r_base.to_string(),
-                m_dd: "1".into(),
-                m_loss: "1".into(),
-                r_adaptive: r.r_target.to_string(),
                 r_portfolio_cap: r.r_portfolio_cap.to_string(),
                 r_daily_cap: r.r_daily_cap.to_string(),
-                r_floor_cap: r.r_buffer.to_string(),
                 r_prop_cap: r.r_prop_cap.to_string(),
                 r_allowed: r.r_allowed.to_string(),
                 entry_minus_stop: ems.to_string(),

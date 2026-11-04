@@ -34,16 +34,42 @@ export function NewTradeCard({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<DecisionOut | null>(null);
   const [instruments, setInstruments] = useState<Instrument[]>([]);
+  const [symbol, setSymbol] = useState<string>("");
+
+  async function reloadInstruments() {
+    try {
+      const list = await listInstruments();
+      setInstruments(list);
+      setSymbol((prev) => {
+        if (prev && list.some((i) => i.symbol === prev)) return prev;
+        return list.length > 0 ? list[0].symbol : "";
+      });
+    } catch (e) {
+      console.warn("instruments load failed", e);
+    }
+  }
+
+  const [refreshingInstruments, setRefreshingInstruments] = useState(false);
+
+  async function handleRefreshInstruments() {
+    setRefreshingInstruments(true);
+    await reloadInstruments();
+    setRefreshingInstruments(false);
+  }
 
   useEffect(() => {
-    listInstruments()
-      .then((list) => {
-        setInstruments(list);
-        if (list.length > 0) setSymbol(list[0].symbol);
-      })
-      .catch((e) => console.warn("instruments load failed", e));
+    reloadInstruments();
+
+    const handler = () => reloadInstruments();
+    window.addEventListener("instrumentsChanged", handler);
+    return () => window.removeEventListener("instrumentsChanged", handler);
   }, []);
-  const [symbol, setSymbol] = useState<string>("");
+
+  // Reset result when symbol changes
+  useEffect(() => {
+    setResult(null);
+  }, [symbol]);
+
   const [error, setError] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -149,18 +175,30 @@ export function NewTradeCard({
               <em className="ee-hint"> — no instruments yet (add in Settings)</em>
             )}
           </span>
-          <select
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-            disabled={instruments.length === 0}
-          >
-            <option value="">— select —</option>
-            {instruments.map((i) => (
-              <option key={i.symbol} value={i.symbol}>
-                {i.symbol} ({i.spec_source})
-              </option>
-            ))}
-          </select>
+          <div className="ee-symbol-row">
+            <select
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value)}
+              disabled={instruments.length === 0}
+              className="ee-symbol-select"
+            >
+              <option value="">— select symbol —</option>
+              {instruments.map((i) => (
+                <option key={i.symbol} value={i.symbol}>
+                  {i.symbol} ({i.spec_source})
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="ee-symbol-refresh"
+              onClick={handleRefreshInstruments}
+              disabled={refreshingInstruments}
+              title="Reload instruments from database"
+            >
+              <span className={refreshingInstruments ? "ee-spin" : ""}>⟳</span>
+            </button>
+          </div>
         </label>
 
 <label className="ee-field">

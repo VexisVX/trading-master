@@ -68,6 +68,8 @@ pub fn evaluate_with_conn(
     proposal: Option<&TradeProposal>,
     conn: Option<&rusqlite::Connection>,
 ) -> Result<TradeDecision, EquityError> {
+    eprintln!("[ENGINE] START");
+
     cfg.validate().map_err(EquityError::InvalidInput)?;
 
     // 1. Snapshot age

@@ -3807,3 +3807,210 @@ button.sidebar__item.is-active {
 [data-theme="cream"] .ee-sm-detail__row { border-bottom-color: rgba(107, 93, 71, 0.15); }
 [data-theme="cream"] .ee-sm-detail__row span { color: #4a3f2e; }
 [data-theme="cream"] .ee-sm-detail__row strong { color: #2e2418; }
+
+/* ============================================================
+ * Symbol Select — themed dropdown
+ * ============================================================ */
+
+.ee-symbol-select {
+  width: 100%;
+  padding: 8px 32px 8px 12px;
+  border-radius: 8px;
+  background-color: var(--bg-2, #161d26);
+  color: var(--text-0, #e6edf3);
+  border: 1px solid var(--border, #232c38);
+  font-size: 13px;
+  font-family: var(--mono, monospace);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239aa7b4' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 10px;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.ee-symbol-select:hover:not(:disabled) {
+  border-color: var(--text-1, #9aa7b4);
+}
+
+.ee-symbol-select:focus {
+  outline: none;
+  border-color: var(--accent, #2dd4bf);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(45, 212, 191, 0.2));
+}
+
+.ee-symbol-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ee-symbol-select option {
+  background: var(--bg-1, #11161d);
+  color: var(--text-0, #e6edf3);
+  padding: 6px;
+}
+
+/* Light theme */
+[data-theme="light"] .ee-symbol-select {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23475569' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+}
+[data-theme="light"] .ee-symbol-select:hover:not(:disabled) {
+  border-color: #94a3b8;
+}
+[data-theme="light"] .ee-symbol-select option {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+/* Cream theme */
+[data-theme="cream"] .ee-symbol-select {
+  background-color: #faf6ed;
+  color: #2e2418;
+  border-color: #c8bca1;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%234a3f2e' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+}
+[data-theme="cream"] .ee-symbol-select:hover:not(:disabled) {
+  border-color: #a89a82;
+}
+[data-theme="cream"] .ee-symbol-select option {
+  background: #efe7d8;
+  color: #2e2418;
+}
+
+/* Dim theme */
+[data-theme="dim"] .ee-symbol-select {
+  background-color: #2b323d;
+  color: #e6edf3;
+  border-color: #4b5563;
+}
+[data-theme="dim"] .ee-symbol-select:hover:not(:disabled) {
+  border-color: #b8c0cc;
+}
+[data-theme="dim"] .ee-symbol-select option {
+  background: #222831;
+  color: #e6edf3;
+}
+
+/* Amoled theme */
+[data-theme="amoled"] .ee-symbol-select {
+  background-color: #0a0a0a;
+  color: #ffffff;
+  border-color: #2a2a2a;
+}
+[data-theme="amoled"] .ee-symbol-select:hover:not(:disabled) {
+  border-color: #b0b0b0;
+}
+[data-theme="amoled"] .ee-symbol-select option {
+  background: #050505;
+  color: #ffffff;
+}
+
+
+/* ============================================================
+ * Symbol row: select + refresh button
+ * ============================================================ */
+
+.ee-symbol-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.ee-symbol-row .ee-symbol-select {
+  flex: 1;
+}
+
+.ee-symbol-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  border-radius: 8px;
+  background: var(--bg-2, #161d26);
+  color: var(--text-1, #9aa7b4);
+  border: 1px solid var(--border, #232c38);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s, transform 0.12s;
+}
+
+.ee-symbol-refresh:hover:not(:disabled) {
+  background: var(--bg-3, #1d2530);
+  color: var(--accent, #2dd4bf);
+  border-color: var(--accent, #2dd4bf);
+}
+
+.ee-symbol-refresh:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.ee-symbol-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ee-spin {
+  display: inline-block;
+  animation: ee-spin-anim 0.8s linear infinite;
+}
+
+@keyframes ee-spin-anim {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Light theme */
+[data-theme="light"] .ee-symbol-refresh {
+  background: #ffffff;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+[data-theme="light"] .ee-symbol-refresh:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #0891b2;
+  border-color: #0891b2;
+}
+
+/* Cream theme */
+[data-theme="cream"] .ee-symbol-refresh {
+  background: #faf6ed;
+  color: #4a3f2e;
+  border-color: #c8bca1;
+}
+[data-theme="cream"] .ee-symbol-refresh:hover:not(:disabled) {
+  background: #efe7d8;
+  color: #0e7490;
+  border-color: #0e7490;
+}
+
+/* Dim theme */
+[data-theme="dim"] .ee-symbol-refresh {
+  background: #2b323d;
+  color: #b8c0cc;
+  border-color: #4b5563;
+}
+[data-theme="dim"] .ee-symbol-refresh:hover:not(:disabled) {
+  background: #343c49;
+  color: var(--accent, #2dd4bf);
+}
+
+/* Amoled theme */
+[data-theme="amoled"] .ee-symbol-refresh {
+  background: #0a0a0a;
+  color: #b0b0b0;
+  border-color: #2a2a2a;
+}
+[data-theme="amoled"] .ee-symbol-refresh:hover:not(:disabled) {
+  background: #101010;
+  color: var(--accent, #2dd4bf);
+  border-color: var(--accent, #2dd4bf);
+}
+

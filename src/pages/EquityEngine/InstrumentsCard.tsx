@@ -14,6 +14,7 @@ export function InstrumentsCard() {
   const [pendingDelete, setPendingDelete] = useState<Instrument | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
+  const [pendingImport, setPendingImport] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -45,6 +46,7 @@ export function InstrumentsCard() {
     try {
       const n = await restoreDefaultInstruments();
       await refresh();
+      window.dispatchEvent(new CustomEvent("instrumentsChanged"));
       if (n > 0) {
         setOk(`Restored ${n} instrument${n === 1 ? "" : "s"}.`);
       } else {
@@ -65,6 +67,7 @@ export function InstrumentsCard() {
     try {
       await deleteInstrument(sym);
       await refresh();
+      window.dispatchEvent(new CustomEvent("instrumentsChanged"));
     } catch (e) {
       setErr(String(e));
     }
@@ -99,11 +102,23 @@ export function InstrumentsCard() {
       });
       if (!src || Array.isArray(src)) return;
       const json = await readTextFile(src);
-      const replace = window.confirm(
-        "Replace ALL existing instruments with the file contents?\n\nCancel = merge (add/update only)."
-      );
-      const count = await importInstrumentsJSON(json, replace);
+      setPendingImport(json);
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  async function doImport(replaceAll: boolean) {
+    if (!pendingImport) return;
+    const json = pendingImport;
+    setPendingImport(null);
+    setErr(null);
+    setOk(null);
+    try {
+      const count = await importInstrumentsJSON(json, replaceAll);
       await refresh();
+      // Notify other components to reload instruments
+      window.dispatchEvent(new CustomEvent("instrumentsChanged"));
       setOk(`Imported ${count} instrument${count === 1 ? "" : "s"}.`);
     } catch (e) {
       setErr(String(e));
@@ -236,6 +251,18 @@ export function InstrumentsCard() {
         />
       )}
     
+      {pendingImport && (
+        <ConfirmDialog
+          title="Import instruments"
+          body="Replace ALL existing instruments with the file contents? Choose Merge to add/update only, or Replace all to wipe and import fresh."
+          confirmLabel="Replace all"
+          cancelLabel="Merge"
+          tone="danger"
+          onConfirm={() => doImport(true)}
+          onCancel={() => doImport(false)}
+        />
+      )}
+
       {pendingDelete && (
         <ConfirmDialog
           title="Delete instrument?"

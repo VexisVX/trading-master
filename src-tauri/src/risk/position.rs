@@ -136,6 +136,12 @@ pub struct SizeFromAllowedResult {
 }
 
 pub fn size_from_allowed(i: &SizeFromAllowedInput) -> Result<SizeFromAllowedResult, PositionError> {
+    eprintln!(
+        "[SIZE] r_allowed={} entry={} stop={} tick_size={} tick_value={} contract_size={} lot_step={} min_qty={} max_qty={}",
+        i.r_allowed, i.entry_price, i.stop_price, i.tick_size, i.tick_value,
+        i.contract_size, i.lot_step, i.min_qty, i.max_qty
+    );
+
     if i.r_allowed <= Decimal::ZERO {
         return Err(PositionError::NonPositiveRisk);
     }

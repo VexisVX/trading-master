@@ -61,18 +61,13 @@ export interface DecisionReasonObject {
 export interface RiskDetail {
   equity: string;
   r_base: string;
-  m_dd: string;
-  m_loss: string;
-  r_adaptive: string;
   r_portfolio_cap: string;
   r_daily_cap: string;
-  r_floor_cap: string;
   r_prop_cap: string;
   r_allowed: string;
   entry_minus_stop: string;
   contract_multiplier: string;
   per_unit_cost: string;
-  // new (S8)
   buffer_r: string;
   m_preserve: string;
   f_internal: string;
