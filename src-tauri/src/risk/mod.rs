@@ -16,39 +16,28 @@
 //! inside this crate. Do not copy this pattern elsewhere.
 #![allow(unused_imports)]
 
+pub mod budget;
+pub mod drawdown;
 pub mod live_calc;
 pub mod money;
 pub mod news;
 pub mod position;
-pub mod rr;
 pub mod prop_firm;
 pub mod r_multiple;
-pub mod budget;
-pub mod drawdown;
+pub mod rr;
 
 // -- Public surface ---------------------------------------------------
+pub use budget::{compute_risk_status, trade_open_risk, trade_realized_pnl};
+pub use drawdown::{compute_drawdown, DrawdownError, DrawdownPoint, DrawdownResult};
 pub use live_calc::{
-    portfolio_risk, PortfolioRiskInput, PortfolioRiskResult,
-    PortfolioTradeInput, PortfolioTradeResult,
-    assistant, AssistantInput, AssistantResult, Advice,
-    calculate as calculate_live_risk, LiveCalcInput, LiveCalcResult,
-    partial_close, PartialCloseInput, PartialCloseResult,
-    martingale_check, MartingaleCheckInput, MartingaleCheckResult,
-    break_even, BreakEvenInput, BreakEvenResult,
-    size_from_risk, SizeFromRiskInput, SizeFromRiskResult,
+    assistant, break_even, calculate as calculate_live_risk, martingale_check, partial_close,
+    portfolio_risk, size_from_risk, Advice, AssistantInput, AssistantResult, BreakEvenInput,
+    BreakEvenResult, LiveCalcInput, LiveCalcResult, MartingaleCheckInput, MartingaleCheckResult,
+    PartialCloseInput, PartialCloseResult, PortfolioRiskInput, PortfolioRiskResult,
+    PortfolioTradeInput, PortfolioTradeResult, SizeFromRiskInput, SizeFromRiskResult,
 };
-pub use money::{
-    round_money, round_stat, parse_decimal, safe_div, MoneyError,
-};
-pub use position::{
-    compute_position_size, PositionSizeInput, PositionSizeResult, PositionError,
-};
-pub use r_multiple::{
-    compute_r, TradeR, RResult, RError, Exit,
-};
+pub use money::{parse_decimal, round_money, round_stat, safe_div, MoneyError};
+pub use position::{compute_position_size, PositionError, PositionSizeInput, PositionSizeResult};
+pub use prop_firm::evaluate as evaluate_prop_firm;
+pub use r_multiple::{compute_r, Exit, RError, RResult, TradeR};
 pub use rr::{planned_rr, realized_r, trade_planned_rr};
-pub use prop_firm::{evaluate as evaluate_prop_firm};
-pub use budget::{trade_open_risk, trade_realized_pnl, compute_risk_status};
-pub use drawdown::{
-    compute_drawdown, DrawdownResult, DrawdownPoint, DrawdownError,
-};

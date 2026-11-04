@@ -34,17 +34,19 @@ impl State {
         }
     }
     pub fn is_blocking(self) -> bool {
-        matches!(self,
-            State::PreservationPause | State::DailyLock | State::PropHardLock)
+        matches!(
+            self,
+            State::PreservationPause | State::DailyLock | State::PropHardLock
+        )
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct TransitionInput {
     pub previous: State,
-    pub prop_breached: bool,      // hard rule
+    pub prop_breached: bool, // hard rule
     pub daily_locked: bool,
-    pub buffer_r: Decimal,        // B / R_base
+    pub buffer_r: Decimal, // B / R_base
     pub recovery_authorized: bool,
 }
 
@@ -117,7 +119,10 @@ mod tests {
 
     #[test]
     fn normal_to_pause() {
-        assert_eq!(next(&i(State::NormalGrowth, dec!(1))), State::PreservationPause);
+        assert_eq!(
+            next(&i(State::NormalGrowth, dec!(1))),
+            State::PreservationPause
+        );
     }
 
     #[test]
@@ -133,9 +138,15 @@ mod tests {
     #[test]
     fn pause_requires_hysteresis_to_resume() {
         // buffer_r = 2.2 — above pause (2) but below resume (2.5)
-        assert_eq!(next(&i(State::PreservationPause, dec!(2.2))), State::PreservationPause);
+        assert_eq!(
+            next(&i(State::PreservationPause, dec!(2.2))),
+            State::PreservationPause
+        );
         // buffer_r = 3 — resumes to Protected
-        assert_eq!(next(&i(State::PreservationPause, dec!(3))), State::Protected);
+        assert_eq!(
+            next(&i(State::PreservationPause, dec!(3))),
+            State::Protected
+        );
     }
 
     #[test]

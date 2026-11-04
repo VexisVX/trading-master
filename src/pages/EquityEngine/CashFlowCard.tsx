@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import {
   CashFlowRow,
   cashflowDeposit,
   cashflowWithdraw,
   cashflowFee,
   listCashFlows,
+  deleteCashFlow,
   fmtMoney,
 } from "../../lib/equityApi";
 
@@ -23,6 +25,7 @@ export function CashFlowCard({ accountId }: Props) {
   const [note, setNote] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<CashFlowRow | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -39,6 +42,12 @@ export function CashFlowCard({ accountId }: Props) {
   useEffect(() => {
     refresh();
   }, [accountId]);
+  // Auto-dismiss success message after 4 seconds
+  useEffect(() => {
+    if (!ok) return;
+    const t = setTimeout(() => setOk(null), 4000);
+    return () => clearTimeout(t);
+  }, [ok]);
 
   async function submit() {
     if (!amount.trim()) {
@@ -69,6 +78,20 @@ export function CashFlowCard({ accountId }: Props) {
     }
   }
 
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setErr(null);
+    try {
+      await deleteCashFlow(pendingDelete.id);
+      setPendingDelete(null);
+      await refresh();
+    } catch (e) {
+      setErr(String(e));
+      setPendingDelete(null);
+    }
+  }
+
+
   return (
     <section className="ee-card ee-cashflow">
       <div className="ee-card__header">
@@ -80,7 +103,13 @@ export function CashFlowCard({ accountId }: Props) {
         </div>
       </div>
 
-      <div className="ee-cf-form">
+      <div className="ee-cf-form ee-cf-form--separated">
+        {(err || ok) && (
+          <div className="ee-cf-alerts">
+            {err && <div className="ee-alert ee-alert--error">{err}</div>}
+            {ok && <div className="ee-alert ee-alert--success">{ok}</div>}
+          </div>
+        )}
         <div className="ee-cf-tabs">
           <button
             className={`ee-cf-tab ${kind === "deposit" ? "is-active" : ""}`}
@@ -129,10 +158,13 @@ export function CashFlowCard({ accountId }: Props) {
           </button>
         </div>
 
-        {err && <div className="ee-alert ee-alert--error">{err}</div>}
-        {ok && <div className="ee-alert ee-alert--success">{ok}</div>}
+
       </div>
 
+      <div className="ee-cf-list-header">
+        <span className="ee-cf-list-title">Recent cash flows</span>
+        <span className="ee-cf-list-count">{flows.length} entries</span>
+      </div>
       <div className="ee-cf-list-wrap">
         {loading && <div className="ee-muted">Loading…</div>}
         {!loading && flows.length === 0 && (
@@ -150,6 +182,7 @@ export function CashFlowCard({ accountId }: Props) {
                 <th>NAV</th>
                 <th>Units before → after</th>
                 <th>Note</th>
+                <th style={{ width: 60 }}>Delete</th>
               </tr>
             </thead>
             <tbody>
@@ -163,12 +196,35 @@ export function CashFlowCard({ accountId }: Props) {
                   <td className="mono">{f.nav_before}</td>
                   <td className="mono">{f.units_before} → {f.units_after}</td>
                   <td>{f.note || "—"}</td>
+                  <td>
+                    <button
+                      className="ee-cf-delete"
+                      onClick={() => setPendingDelete(f)}
+                      title="Delete this cash flow"
+                      type="button"
+                    >
+                      ✕
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+    
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Delete cash flow?"
+          body={`This will permanently remove the ${pendingDelete.kind} of ${pendingDelete.amount} ${pendingDelete.currency} on ${pendingDelete.occurred_at.slice(0, 10)}. Units will be reverted. This cannot be undone.`}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          tone="danger"
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
     </section>
   );
 }

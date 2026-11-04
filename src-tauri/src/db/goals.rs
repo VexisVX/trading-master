@@ -1,7 +1,7 @@
 use super::DbError;
 use rusqlite::{params, Connection, OptionalExtension};
-use rust_decimal::Decimal;
 use rust_decimal::prelude::FromStr;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

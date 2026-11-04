@@ -4,11 +4,11 @@ use super::DbError;
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, DbError> {
-    conn.query_row(
-        "SELECT value FROM app_settings WHERE key=?1",
-        [key],
-        |r| r.get(0),
-    ).optional().map_err(Into::into)
+    conn.query_row("SELECT value FROM app_settings WHERE key=?1", [key], |r| {
+        r.get(0)
+    })
+    .optional()
+    .map_err(Into::into)
 }
 
 pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<(), DbError> {
@@ -42,7 +42,10 @@ mod tests {
     fn round_trip() {
         let conn = fresh_db();
         set_setting(&conn, "marketaux_api_key", "test123").unwrap();
-        assert_eq!(get_setting(&conn, "marketaux_api_key").unwrap(), Some("test123".into()));
+        assert_eq!(
+            get_setting(&conn, "marketaux_api_key").unwrap(),
+            Some("test123".into())
+        );
     }
 
     #[test]

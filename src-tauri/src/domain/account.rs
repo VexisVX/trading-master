@@ -10,7 +10,10 @@ pub enum AccountKind {
 
 impl AccountKind {
     pub fn as_str(&self) -> &'static str {
-        match self { AccountKind::Personal => "personal", AccountKind::PropFirm => "prop_firm" }
+        match self {
+            AccountKind::Personal => "personal",
+            AccountKind::PropFirm => "prop_firm",
+        }
     }
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
@@ -19,7 +22,9 @@ impl AccountKind {
             _ => None,
         }
     }
-    pub fn is_prop_firm(&self) -> bool { matches!(self, AccountKind::PropFirm) }
+    pub fn is_prop_firm(&self) -> bool {
+        matches!(self, AccountKind::PropFirm)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

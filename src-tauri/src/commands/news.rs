@@ -24,11 +24,13 @@ pub async fn news_fetch(
     // Check cache (30 min TTL)
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        if let Some(cached) = crate::db::app_settings::get_setting(&conn, &cache_key)
-            .map_err(|e| e.to_string())? {
+        if let Some(cached) =
+            crate::db::app_settings::get_setting(&conn, &cache_key).map_err(|e| e.to_string())?
+        {
             let ts_key = format!("{}_ts", cache_key);
-            if let Some(ts) = crate::db::app_settings::get_setting(&conn, &ts_key)
-                .map_err(|e| e.to_string())? {
+            if let Some(ts) =
+                crate::db::app_settings::get_setting(&conn, &ts_key).map_err(|e| e.to_string())?
+            {
                 if let Ok(t) = chrono::DateTime::parse_from_rfc3339(&ts) {
                     let age = chrono::Utc::now().signed_duration_since(t);
                     if age.num_minutes() < 120 {
@@ -53,12 +55,17 @@ pub async fn news_fetch(
     }
 
     let query = NewsQuery {
-        symbols, search, limit: Some(3),
+        symbols,
+        search,
+        limit: Some(3),
         language: Some("en".into()),
-        min_sentiment, max_sentiment,
+        min_sentiment,
+        max_sentiment,
     };
 
-    let articles = marketaux::fetch(&api_key, &query).await.map_err(|e| e.to_string())?;
+    let articles = marketaux::fetch(&api_key, &query)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Save to cache
     if let Ok(json) = serde_json::to_string(&articles) {
@@ -85,8 +92,12 @@ pub async fn news_test_key(state: State<'_, AppState>) -> Result<bool, String> {
     }
 
     let query = NewsQuery {
-        symbols: None, search: None, limit: Some(1),
-        language: Some("en".into()), min_sentiment: None, max_sentiment: None,
+        symbols: None,
+        search: None,
+        limit: Some(1),
+        language: Some("en".into()),
+        min_sentiment: None,
+        max_sentiment: None,
     };
 
     match marketaux::fetch(&api_key, &query).await {
@@ -118,7 +129,8 @@ pub async fn fmp_calendar_fetch(
         return Err("No FMP API key. Set it in Settings → Integrations.".into());
     }
     crate::risk::news::fmp::fetch_range(&api_key, &from, &to)
-        .await.map_err(|e| e.to_string())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -135,5 +147,6 @@ pub async fn finnhub_news(
         return Err("No Finnhub API key. Add it in Settings → Integrations.".into());
     }
     crate::risk::news::finnhub::fetch_general(&api_key)
-        .await.map_err(|e| e.to_string())
+        .await
+        .map_err(|e| e.to_string())
 }

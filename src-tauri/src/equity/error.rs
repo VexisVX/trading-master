@@ -28,19 +28,38 @@ pub enum DecisionReason {
     Allowed,
     AccountDisabled,
     AccountPaused,
-    EquityBelowFloor { equity: String, floor: String },
-    DailyLossExceeded { used: String, limit: String },
-    PortfolioRiskFull { used: String, max: String },
+    EquityBelowFloor {
+        equity: String,
+        floor: String,
+    },
+    DailyLossExceeded {
+        used: String,
+        limit: String,
+    },
+    PortfolioRiskFull {
+        used: String,
+        max: String,
+    },
     FloorRiskCapacityZero,
     AdaptiveRiskZero,
     RAllowedZeroOrNegative,
-    SnapshotTooOld { age_hours: i64, max_hours: i64 },
+    SnapshotTooOld {
+        age_hours: i64,
+        max_hours: i64,
+    },
     InvalidConfig(String),
-    InstrumentNotFound { symbol: String },
-    BelowMinimumQuantity { min_qty: String, allowed_risk: String, actual_risk: String },
-    MarketDataIncomplete { reason: String },
+    InstrumentNotFound {
+        symbol: String,
+    },
+    BelowMinimumQuantity {
+        min_qty: String,
+        allowed_risk: String,
+        actual_risk: String,
+    },
+    MarketDataIncomplete {
+        reason: String,
+    },
 }
-
 
 /// PHASE 2.2 — daily P&L computation errors.
 ///
@@ -53,7 +72,11 @@ pub enum DailyPnLError {
     /// current_price is missing for an open trade — floating P&L unknown.
     FloatingPnlUnknown { trade_id: i64, symbol: String },
     /// current_price is older than max_price_age_minutes.
-    MarketDataStale { trade_id: i64, symbol: String, age_minutes: i64 },
+    MarketDataStale {
+        trade_id: i64,
+        symbol: String,
+        age_minutes: i64,
+    },
     /// Instrument spec missing from DB — cannot convert to account currency.
     InstrumentMissing { symbol: String },
     /// Instrument spec has estimated source — prohibited for risk.
@@ -67,18 +90,34 @@ pub enum DailyPnLError {
 impl std::fmt::Display for DailyPnLError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DailyPnLError::FloatingPnlUnknown { trade_id, symbol } =>
-                write!(f, "trade {} {}: current_price missing (floating P&L unknown)", trade_id, symbol),
-            DailyPnLError::MarketDataStale { trade_id, symbol, age_minutes } =>
-                write!(f, "trade {} {}: price stale ({} min old)", trade_id, symbol, age_minutes),
-            DailyPnLError::InstrumentMissing { symbol } =>
-                write!(f, "instrument {} not found — cannot compute floating P&L", symbol),
-            DailyPnLError::InstrumentUnsafe { symbol, source } =>
-                write!(f, "instrument {} has spec_source={} — prohibited", symbol, source),
-            DailyPnLError::CurrencyConversionMissing { from, to } =>
-                write!(f, "currency conversion {}→{} unavailable", from, to),
-            DailyPnLError::ComputeError(s) =>
-                write!(f, "compute error: {}", s),
+            DailyPnLError::FloatingPnlUnknown { trade_id, symbol } => write!(
+                f,
+                "trade {} {}: current_price missing (floating P&L unknown)",
+                trade_id, symbol
+            ),
+            DailyPnLError::MarketDataStale {
+                trade_id,
+                symbol,
+                age_minutes,
+            } => write!(
+                f,
+                "trade {} {}: price stale ({} min old)",
+                trade_id, symbol, age_minutes
+            ),
+            DailyPnLError::InstrumentMissing { symbol } => write!(
+                f,
+                "instrument {} not found — cannot compute floating P&L",
+                symbol
+            ),
+            DailyPnLError::InstrumentUnsafe { symbol, source } => write!(
+                f,
+                "instrument {} has spec_source={} — prohibited",
+                symbol, source
+            ),
+            DailyPnLError::CurrencyConversionMissing { from, to } => {
+                write!(f, "currency conversion {}→{} unavailable", from, to)
+            }
+            DailyPnLError::ComputeError(s) => write!(f, "compute error: {}", s),
         }
     }
 }

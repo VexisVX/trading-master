@@ -76,24 +76,33 @@ fn closed_after_reset(t: &Trade, day_start: DateTime<Utc>) -> bool {
     if t.status != TradeStatus::Closed {
         return false;
     }
-    let Some(c) = t.closed_at.as_deref() else { return false; };
-    let Ok(when) = DateTime::parse_from_rfc3339(c) else { return false; };
+    let Some(c) = t.closed_at.as_deref() else {
+        return false;
+    };
+    let Ok(when) = DateTime::parse_from_rfc3339(c) else {
+        return false;
+    };
     when.with_timezone(&Utc) >= day_start
 }
 
 fn age_minutes(ts: Option<&str>, now: DateTime<Utc>) -> Option<i64> {
     let ts = ts?;
     let when = DateTime::parse_from_rfc3339(ts).ok()?;
-    Some(now.signed_duration_since(when.with_timezone(&Utc)).num_minutes())
+    Some(
+        now.signed_duration_since(when.with_timezone(&Utc))
+            .num_minutes(),
+    )
 }
 
 fn lookup_instrument<'a>(
     instruments: &'a HashMap<String, InstrumentSpec>,
     symbol: &str,
 ) -> Result<&'a InstrumentSpec, DailyPnLError> {
-    let spec = instruments.get(symbol).ok_or_else(|| {
-        DailyPnLError::InstrumentMissing { symbol: symbol.into() }
-    })?;
+    let spec = instruments
+        .get(symbol)
+        .ok_or_else(|| DailyPnLError::InstrumentMissing {
+            symbol: symbol.into(),
+        })?;
     if !spec.spec_source.is_safe_for_sizing() {
         return Err(DailyPnLError::InstrumentUnsafe {
             symbol: symbol.into(),
@@ -112,12 +121,12 @@ fn lookup_instrument<'a>(
 
 /// Compute the floating P&L of one open trade in account currency.
 fn floating_one(t: &Trade, spec: &InstrumentSpec) -> Result<Decimal, DailyPnLError> {
-    let cur = t.current_price.ok_or_else(|| {
-        DailyPnLError::FloatingPnlUnknown {
+    let cur = t
+        .current_price
+        .ok_or_else(|| DailyPnLError::FloatingPnlUnknown {
             trade_id: t.id,
             symbol: t.symbol.clone(),
-        }
-    })?;
+        })?;
     let diff = match t.side {
         Side::Long => cur - t.entry_price,
         Side::Short => t.entry_price - cur,
@@ -133,12 +142,12 @@ fn floating_one(t: &Trade, spec: &InstrumentSpec) -> Result<Decimal, DailyPnLErr
 
 /// Remaining downside of one open trade: from current_price to active_stop.
 fn downside_one(t: &Trade, spec: &InstrumentSpec) -> Result<Decimal, DailyPnLError> {
-    let cur = t.current_price.ok_or_else(|| {
-        DailyPnLError::FloatingPnlUnknown {
+    let cur = t
+        .current_price
+        .ok_or_else(|| DailyPnLError::FloatingPnlUnknown {
             trade_id: t.id,
             symbol: t.symbol.clone(),
-        }
-    })?;
+        })?;
     let stop = t.active_stop();
     let dist = match t.side {
         Side::Long => (cur - stop).max(Decimal::ZERO),
@@ -171,9 +180,11 @@ pub fn compute(input: &DailyPnLInput<'_>) -> Result<DailyPnLResult, DailyPnLErro
                         // Compute from legs.
                         let mut gross = Decimal::ZERO;
                         let mut cost = Decimal::ZERO;
-                        for l in t.legs.iter().filter(|l| {
-                            matches!(l.kind, crate::domain::trade::LegKind::Exit)
-                        }) {
+                        for l in t
+                            .legs
+                            .iter()
+                            .filter(|l| matches!(l.kind, crate::domain::trade::LegKind::Exit))
+                        {
                             let d = match t.side {
                                 Side::Long => l.price - t.entry_price,
                                 Side::Short => t.entry_price - l.price,
@@ -214,9 +225,7 @@ pub fn compute(input: &DailyPnLInput<'_>) -> Result<DailyPnLResult, DailyPnLErro
     }
 
     // DailyNetPnL formula
-    let daily_net_pnl = input.current_equity
-        - input.day_start_equity
-        - input.external_cash_flows;
+    let daily_net_pnl = input.current_equity - input.day_start_equity - input.external_cash_flows;
 
     let daily_loss_used = if daily_net_pnl < Decimal::ZERO {
         -daily_net_pnl
@@ -227,10 +236,7 @@ pub fn compute(input: &DailyPnLInput<'_>) -> Result<DailyPnLResult, DailyPnLErro
     let daily_remaining = if input.daily_loss_limit <= Decimal::ZERO {
         Decimal::ZERO
     } else {
-        (input.daily_loss_limit
-            - daily_loss_used
-            - remaining_downside
-            - input.execution_buffer)
+        (input.daily_loss_limit - daily_loss_used - remaining_downside - input.execution_buffer)
             .max(Decimal::ZERO)
     };
 
@@ -247,14 +253,11 @@ pub fn compute(input: &DailyPnLInput<'_>) -> Result<DailyPnLResult, DailyPnLErro
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::instrument::{InstrumentSpec, SpecSource};
-    use crate::domain::trade::{
-        empty_trade, LegKind, Side, TradeLeg, TradeStatus,
-    };
+    use crate::domain::trade::{empty_trade, LegKind, Side, TradeLeg, TradeStatus};
     use chrono::Duration;
     use rust_decimal_macros::dec;
     use std::collections::HashMap;

@@ -2,9 +2,9 @@
 //! Given open trades, closed trades today, and current equity,
 //! produce a `RiskStatus` snapshot for the dashboard.
 
-use rust_decimal::Decimal;
 use crate::domain::risk_settings::{RiskSettings, RiskStatus};
 use crate::domain::trade::{Side, Trade, TradeStatus};
+use rust_decimal::Decimal;
 
 /// Compute the open risk of a single trade.
 /// open_risk = |entry - initial_stop| * total_quantity
@@ -16,24 +16,37 @@ pub fn trade_open_risk(t: &Trade) -> Decimal {
 /// True if the trade was closed today (UTC).
 fn closed_today(t: &Trade, today_prefix: &str) -> bool {
     t.status == TradeStatus::Closed
-        && t.closed_at.as_deref().map(|c| c.starts_with(today_prefix)).unwrap_or(false)
+        && t.closed_at
+            .as_deref()
+            .map(|c| c.starts_with(today_prefix))
+            .unwrap_or(false)
 }
 
 /// Realized P&L of a closed trade, given entry/exit legs.
 /// Positive = profit, negative = loss. Costs are subtracted.
 pub fn trade_realized_pnl(t: &Trade) -> Decimal {
-    if t.status != TradeStatus::Closed { return Decimal::ZERO; }
+    if t.status != TradeStatus::Closed {
+        return Decimal::ZERO;
+    }
 
     // Prefer user-entered P&L when present — it is what the trader actually realized.
-    if let Some(v) = t.manual_pnl { return v; }
+    if let Some(v) = t.manual_pnl {
+        return v;
+    }
 
-    let entries: Vec<_> = t.legs.iter()
+    let entries: Vec<_> = t
+        .legs
+        .iter()
         .filter(|l| matches!(l.kind, crate::domain::trade::LegKind::Entry))
         .collect();
-    let exits: Vec<_> = t.legs.iter()
+    let exits: Vec<_> = t
+        .legs
+        .iter()
         .filter(|l| matches!(l.kind, crate::domain::trade::LegKind::Exit))
         .collect();
-    if entries.is_empty() || exits.is_empty() { return Decimal::ZERO; }
+    if entries.is_empty() || exits.is_empty() {
+        return Decimal::ZERO;
+    }
 
     let mut gross = Decimal::ZERO;
     let mut cost = Decimal::ZERO;
@@ -56,7 +69,8 @@ pub fn compute_risk_status(
     trades: &[Trade],
     today_prefix: &str, // "YYYY-MM-DD"
 ) -> RiskStatus {
-    let open: Vec<&Trade> = trades.iter()
+    let open: Vec<&Trade> = trades
+        .iter()
         .filter(|t| t.status == TradeStatus::Open)
         .collect();
 
@@ -80,7 +94,11 @@ pub fn compute_risk_status(
             daily_pnl += trade_realized_pnl(t);
         }
     }
-    let daily_loss_today = if daily_pnl < Decimal::ZERO { -daily_pnl } else { Decimal::ZERO };
+    let daily_loss_today = if daily_pnl < Decimal::ZERO {
+        -daily_pnl
+    } else {
+        Decimal::ZERO
+    };
     let daily_loss_pct = if equity.is_zero() {
         Decimal::ZERO
     } else {
@@ -113,13 +131,15 @@ pub fn compute_risk_status(
     if daily_loss_limit_hit {
         warnings.push(format!(
             "Daily loss limit hit: {}% of {}%.",
-            round2(daily_loss_pct), round2(settings.daily_loss_limit_pct)
+            round2(daily_loss_pct),
+            round2(settings.daily_loss_limit_pct)
         ));
     }
     if portfolio_risk_exceeded {
         warnings.push(format!(
             "Portfolio risk exceeded: {}% of {}%.",
-            round2(open_risk_pct), round2(settings.max_portfolio_risk_pct)
+            round2(open_risk_pct),
+            round2(settings.max_portfolio_risk_pct)
         ));
     }
 
@@ -147,8 +167,8 @@ fn round2(v: Decimal) -> Decimal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_decimal_macros::dec;
     use crate::domain::trade::*;
+    use rust_decimal_macros::dec;
 
     fn settings() -> RiskSettings {
         RiskSettings {
@@ -183,8 +203,22 @@ mod tests {
         t.created_at = closed.to_string();
         t.updated_at = closed.to_string();
         t.legs = vec![
-            TradeLeg { id: 1, kind: LegKind::Entry, price: entry, quantity: qty, executed_at: closed.into(), cost_per_unit: Decimal::ZERO },
-            TradeLeg { id: 2, kind: LegKind::Exit,  price: exit,  quantity: qty, executed_at: closed.into(), cost_per_unit: Decimal::ZERO },
+            TradeLeg {
+                id: 1,
+                kind: LegKind::Entry,
+                price: entry,
+                quantity: qty,
+                executed_at: closed.into(),
+                cost_per_unit: Decimal::ZERO,
+            },
+            TradeLeg {
+                id: 2,
+                kind: LegKind::Exit,
+                price: exit,
+                quantity: qty,
+                executed_at: closed.into(),
+                cost_per_unit: Decimal::ZERO,
+            },
         ];
         t
     }
@@ -222,7 +256,13 @@ mod tests {
 
     #[test]
     fn daily_loss_limit_hit() {
-        let t = closed_trade(1, dec!(1.10), dec!(1.06), dec!(10000), "2026-10-20T15:00:00Z");
+        let t = closed_trade(
+            1,
+            dec!(1.10),
+            dec!(1.06),
+            dec!(10000),
+            "2026-10-20T15:00:00Z",
+        );
         let st = compute_risk_status(&settings(), dec!(10000), &[t], "2026-10-20");
         assert_eq!(st.daily_loss_today, dec!(400));
         assert_eq!(st.daily_loss_pct, dec!(4.00));
@@ -238,7 +278,13 @@ mod tests {
 
     #[test]
     fn profit_does_not_trigger_daily_loss_limit() {
-        let t = closed_trade(1, dec!(1.10), dec!(1.14), dec!(10000), "2026-10-20T15:00:00Z");
+        let t = closed_trade(
+            1,
+            dec!(1.10),
+            dec!(1.14),
+            dec!(10000),
+            "2026-10-20T15:00:00Z",
+        );
         let st = compute_risk_status(&settings(), dec!(10000), &[t], "2026-10-20");
         assert_eq!(st.daily_loss_today, Decimal::ZERO);
         assert!(!st.daily_loss_limit_hit);
@@ -253,5 +299,3 @@ mod tests {
         assert_eq!(st.daily_loss_today, dec!(50));
     }
 }
-
-

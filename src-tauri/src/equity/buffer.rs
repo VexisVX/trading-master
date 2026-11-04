@@ -34,7 +34,11 @@ pub struct BufferResult {
 
 pub fn compute(i: &BufferInput) -> BufferResult {
     let raw = i.equity - i.f_internal - i.r_open - i.execution_buffer;
-    let b = if raw > Decimal::ZERO { raw } else { Decimal::ZERO };
+    let b = if raw > Decimal::ZERO {
+        raw
+    } else {
+        Decimal::ZERO
+    };
 
     let (buffer_r, m_preserve, pause) = if i.r_base.is_zero() {
         (Decimal::ZERO, Decimal::ZERO, true)
@@ -52,9 +56,19 @@ pub fn compute(i: &BufferInput) -> BufferResult {
         (br, m, p)
     };
 
-    let r_buffer = if b > i.r_base { b - i.r_base } else { Decimal::ZERO };
+    let r_buffer = if b > i.r_base {
+        b - i.r_base
+    } else {
+        Decimal::ZERO
+    };
 
-    BufferResult { b, buffer_r, m_preserve, r_buffer, pause }
+    BufferResult {
+        b,
+        buffer_r,
+        m_preserve,
+        r_buffer,
+        pause,
+    }
 }
 
 #[cfg(test)]

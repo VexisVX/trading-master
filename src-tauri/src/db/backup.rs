@@ -22,7 +22,11 @@ pub struct BackupInfo {
 }
 
 /// Force a WAL checkpoint so the .db file is self-contained, then copy it.
-pub fn create_backup(conn: &Connection, db_path: &Path, dest: &Path) -> Result<BackupInfo, DbError> {
+pub fn create_backup(
+    conn: &Connection,
+    db_path: &Path,
+    dest: &Path,
+) -> Result<BackupInfo, DbError> {
     conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
 
     if let Some(parent) = dest.parent() {
@@ -42,10 +46,7 @@ pub fn create_backup(conn: &Connection, db_path: &Path, dest: &Path) -> Result<B
 
 /// Validate that the given file is a readable SQLite database with our schema.
 pub fn validate_backup(candidate: &Path) -> Result<(), DbError> {
-    let conn = Connection::open_with_flags(
-        candidate,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )?;
+    let conn = Connection::open_with_flags(candidate, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
 
     // Must have app_meta with schema_version
     let version: Option<String> = conn

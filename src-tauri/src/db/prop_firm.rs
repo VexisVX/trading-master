@@ -4,27 +4,36 @@ use rusqlite::{params, Connection, OptionalExtension};
 use rust_decimal::Decimal;
 
 fn dec(s: &str) -> Result<Decimal, DbError> {
-    Decimal::from_str_exact(s)
-        .map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
+    Decimal::from_str_exact(s).map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
 }
 
 pub fn get_rules(conn: &Connection, account_id: i64) -> Result<Option<PropFirmRules>, DbError> {
-    let row = conn.query_row(
-        "SELECT account_id, enabled, max_dd_pct, trailing_dd,
+    let row = conn
+        .query_row(
+            "SELECT account_id, enabled, max_dd_pct, trailing_dd,
                 daily_loss_limit_pct, max_total_loss_pct, profit_target_pct,
                 min_trading_days, updated_at
          FROM prop_firm_rules WHERE account_id=?1",
-        [account_id],
-        |r| Ok((
-            r.get::<_, i64>(0)?, r.get::<_, i64>(1)?,
-            r.get::<_, String>(2)?, r.get::<_, i64>(3)?,
-            r.get::<_, String>(4)?, r.get::<_, String>(5)?,
-            r.get::<_, String>(6)?, r.get::<_, i64>(7)?,
-            r.get::<_, String>(8)?,
-        )),
-    ).optional()?;
+            [account_id],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                    r.get::<_, i64>(7)?,
+                    r.get::<_, String>(8)?,
+                ))
+            },
+        )
+        .optional()?;
 
-    let Some((aid, en, dd, tr, dl, mtl, pt, md, upd)) = row else { return Ok(None) };
+    let Some((aid, en, dd, tr, dl, mtl, pt, md, upd)) = row else {
+        return Ok(None);
+    };
     Ok(Some(PropFirmRules {
         account_id: aid,
         enabled: en != 0,
@@ -39,15 +48,17 @@ pub fn get_rules(conn: &Connection, account_id: i64) -> Result<Option<PropFirmRu
 }
 
 pub fn update_rules(
-    conn: &Connection, account_id: i64, u: &UpdatePropFirmRules,
+    conn: &Connection,
+    account_id: i64,
+    u: &UpdatePropFirmRules,
 ) -> Result<(), DbError> {
     // Validate: percentages must be in (0, 100] if enabled
-    let valid_pct = |v: Decimal| -> bool {
-        v > Decimal::ZERO && v <= Decimal::from(100)
-    };
+    let valid_pct = |v: Decimal| -> bool { v > Decimal::ZERO && v <= Decimal::from(100) };
     let any_enabled = u.enabled;
     if any_enabled {
-        if !valid_pct(u.max_dd_pct) { return Err(DbError::Sqlite(rusqlite::Error::InvalidQuery)); }
+        if !valid_pct(u.max_dd_pct) {
+            return Err(DbError::Sqlite(rusqlite::Error::InvalidQuery));
+        }
         if u.daily_loss_limit_pct > Decimal::ZERO && !valid_pct(u.daily_loss_limit_pct) {
             return Err(DbError::Sqlite(rusqlite::Error::InvalidQuery));
         }
@@ -125,7 +136,8 @@ mod tests {
                updated_at TEXT
              );
              INSERT INTO prop_firm_rules VALUES (1,0,'10',1,'5','10','8',5,'2026-10-20');",
-        ).unwrap();
+        )
+        .unwrap();
         conn
     }
 
@@ -142,15 +154,20 @@ mod tests {
     #[test]
     fn update_round_trip() {
         let conn = fresh_db();
-        update_rules(&conn, 1, &UpdatePropFirmRules {
-            enabled: true,
-            max_dd_pct: dec!(8),
-            trailing_dd: false,
-            daily_loss_limit_pct: dec!(4),
-            max_total_loss_pct: dec!(6),
-            profit_target_pct: dec!(10),
-            min_trading_days: 3,
-        }).unwrap();
+        update_rules(
+            &conn,
+            1,
+            &UpdatePropFirmRules {
+                enabled: true,
+                max_dd_pct: dec!(8),
+                trailing_dd: false,
+                daily_loss_limit_pct: dec!(4),
+                max_total_loss_pct: dec!(6),
+                profit_target_pct: dec!(10),
+                min_trading_days: 3,
+            },
+        )
+        .unwrap();
         let r = get_rules(&conn, 1).unwrap().unwrap();
         assert!(r.enabled);
         assert_eq!(r.max_dd_pct, dec!(8));
@@ -163,7 +180,7 @@ mod tests {
         let conn = fresh_db();
         let bad = UpdatePropFirmRules {
             enabled: true,
-            max_dd_pct: dec!(0),  // invalid
+            max_dd_pct: dec!(0), // invalid
             trailing_dd: true,
             daily_loss_limit_pct: dec!(5),
             max_total_loss_pct: dec!(10),

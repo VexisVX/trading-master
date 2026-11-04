@@ -32,7 +32,14 @@ pub fn create_strategy(conn: &Connection, s: &NewStrategy) -> Result<i64, DbErro
     tx.commit()?;
 
     // Phase 2: version snapshot (best effort, do not fail create)
-    let _ = save_snapshot(conn, strategy_id, 1, &s.name, s.description.as_deref(), &s.timeframes);
+    let _ = save_snapshot(
+        conn,
+        strategy_id,
+        1,
+        &s.name,
+        s.description.as_deref(),
+        &s.timeframes,
+    );
 
     Ok(strategy_id)
 }
@@ -41,20 +48,24 @@ pub fn create_strategy(conn: &Connection, s: &NewStrategy) -> Result<i64, DbErro
 // READ
 // ============================================================
 pub fn get_strategy(conn: &Connection, id: i64) -> Result<Option<Strategy>, DbError> {
-    let row = conn.query_row(
-        "SELECT id, name, description, version, is_active, created_at, updated_at
+    let row = conn
+        .query_row(
+            "SELECT id, name, description, version, is_active, created_at, updated_at
          FROM strategies WHERE id=?1",
-        [id],
-        |r| Ok((
-            r.get::<_, i64>(0)?,
-            r.get::<_, String>(1)?,
-            r.get::<_, Option<String>>(2)?,
-            r.get::<_, i64>(3)?,
-            r.get::<_, i64>(4)?,
-            r.get::<_, String>(5)?,
-            r.get::<_, String>(6)?,
-        )),
-    ).optional()?;
+            [id],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, i64>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                ))
+            },
+        )
+        .optional()?;
 
     let Some((sid, name, description, version, active, created, updated)) = row else {
         return Ok(None);
@@ -72,24 +83,34 @@ pub fn get_strategy(conn: &Connection, id: i64) -> Result<Option<Strategy>, DbEr
     for row in rows {
         let (tf_name, fields_s) = row?;
         let fields: Vec<StrategyField> = serde_json::from_str(&fields_s).unwrap_or_default();
-        timeframes.push(StrategyTimeframe { timeframe: tf_name, fields });
+        timeframes.push(StrategyTimeframe {
+            timeframe: tf_name,
+            fields,
+        });
     }
 
     Ok(Some(Strategy {
-        id: sid, name, description, version,
+        id: sid,
+        name,
+        description,
+        version,
         is_active: active != 0,
-        created_at: created, updated_at: updated,
+        created_at: created,
+        updated_at: updated,
         timeframes,
     }))
 }
 
 pub fn list_strategies(conn: &Connection) -> Result<Vec<Strategy>, DbError> {
     let mut stmt = conn.prepare("SELECT id FROM strategies ORDER BY id DESC")?;
-    let ids: Vec<i64> = stmt.query_map([], |r| r.get(0))?
+    let ids: Vec<i64> = stmt
+        .query_map([], |r| r.get(0))?
         .collect::<Result<_, _>>()?;
     let mut out = Vec::with_capacity(ids.len());
     for id in ids {
-        if let Some(s) = get_strategy(conn, id)? { out.push(s); }
+        if let Some(s) = get_strategy(conn, id)? {
+            out.push(s);
+        }
     }
     Ok(out)
 }
@@ -126,14 +147,22 @@ pub fn update_strategy(conn: &Connection, id: i64, s: &NewStrategy) -> Result<()
         )?;
     }
 
-    let new_version: i64 = tx.query_row(
-        "SELECT version FROM strategies WHERE id=?1", [id], |r| r.get(0),
-    )?;
+    let new_version: i64 =
+        tx.query_row("SELECT version FROM strategies WHERE id=?1", [id], |r| {
+            r.get(0)
+        })?;
 
     tx.commit()?;
 
     // Snapshot (best effort)
-    let _ = save_snapshot(conn, id, new_version, &s.name, s.description.as_deref(), &s.timeframes);
+    let _ = save_snapshot(
+        conn,
+        id,
+        new_version,
+        &s.name,
+        s.description.as_deref(),
+        &s.timeframes,
+    );
 
     Ok(())
 }
@@ -154,8 +183,12 @@ pub fn delete_strategy(conn: &Connection, id: i64) -> Result<(), DbError> {
 // VERSION SNAPSHOTS
 // ============================================================
 fn save_snapshot(
-    conn: &Connection, strategy_id: i64, version: i64,
-    name: &str, description: Option<&str>, timeframes: &[StrategyTimeframe],
+    conn: &Connection,
+    strategy_id: i64,
+    version: i64,
+    name: &str,
+    description: Option<&str>,
+    timeframes: &[StrategyTimeframe],
 ) -> Result<(), DbError> {
     let json = serde_json::to_string(timeframes)
         .map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))?;
@@ -168,20 +201,27 @@ fn save_snapshot(
     Ok(())
 }
 
-pub fn list_versions(conn: &Connection, strategy_id: i64) -> Result<Vec<(i64, i64, String, Option<String>, String)>, DbError> {
+pub fn list_versions(
+    conn: &Connection,
+    strategy_id: i64,
+) -> Result<Vec<(i64, i64, String, Option<String>, String)>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT version, id, name, description, created_at FROM strategy_versions
-         WHERE strategy_id=?1 ORDER BY version DESC"
+         WHERE strategy_id=?1 ORDER BY version DESC",
     )?;
-    let rows = stmt.query_map([strategy_id], |r| Ok((
-        r.get::<_, i64>(0)?,
-        r.get::<_, i64>(1)?,
-        r.get::<_, String>(2)?,
-        r.get::<_, Option<String>>(3)?,
-        r.get::<_, String>(4)?,
-    )))?;
+    let rows = stmt.query_map([strategy_id], |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, i64>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, Option<String>>(3)?,
+            r.get::<_, String>(4)?,
+        ))
+    })?;
     let mut out = Vec::new();
-    for row in rows { out.push(row?); }
+    for row in rows {
+        out.push(row?);
+    }
     Ok(out)
 }
 
@@ -190,7 +230,9 @@ pub fn get_version_json(conn: &Connection, version_id: i64) -> Result<Option<Str
         "SELECT timeframes_json FROM strategy_versions WHERE id=?1",
         [version_id],
         |r| r.get(0),
-    ).optional().map_err(Into::into)
+    )
+    .optional()
+    .map_err(Into::into)
 }
 
 // ============================================================
@@ -199,10 +241,10 @@ pub fn get_version_json(conn: &Connection, version_id: i64) -> Result<Option<Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_decimal::Decimal;
-    use rust_decimal_macros::dec;
     use crate::db::trades as trades_db;
     use crate::domain::trade::*;
+    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
 
     fn fresh_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -239,20 +281,22 @@ mod tests {
             timeframes: vec![
                 StrategyTimeframe {
                     timeframe: "4H".into(),
-                    fields: vec![
-                        StrategyField {
-                            key: "bias".into(), label: "Bias".into(),
-                            kind: FieldType::Select,
-                            options: vec!["Bullish".into(), "Bearish".into(), "Neutral".into()],
-                            required: true,
-                        },
-                    ],
+                    fields: vec![StrategyField {
+                        key: "bias".into(),
+                        label: "Bias".into(),
+                        kind: FieldType::Select,
+                        options: vec!["Bullish".into(), "Bearish".into(), "Neutral".into()],
+                        required: true,
+                    }],
                 },
                 StrategyTimeframe {
                     timeframe: "5M".into(),
                     fields: vec![StrategyField {
-                        key: "entry".into(), label: "Entry confirm".into(),
-                        kind: FieldType::Text, options: vec![], required: true,
+                        key: "entry".into(),
+                        label: "Entry confirm".into(),
+                        kind: FieldType::Text,
+                        options: vec![],
+                        required: true,
                     }],
                 },
             ],

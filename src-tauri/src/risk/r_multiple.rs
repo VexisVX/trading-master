@@ -117,10 +117,13 @@ mod tests {
         TradeR {
             total_quantity: dec!(1.0),
             entry_price: dec!(1.1000),
-            initial_stop: dec!(1.0950),        // 50 pips
+            initial_stop: dec!(1.0950), // 50 pips
             is_long: true,
             cost_per_unit: dec!(0),
-            exits: vec![Exit { price: dec!(1.1100), quantity: dec!(1.0) }],
+            exits: vec![Exit {
+                price: dec!(1.1100),
+                quantity: dec!(1.0),
+            }],
         }
     }
 
@@ -142,8 +145,14 @@ mod tests {
             is_long: true,
             cost_per_unit: dec!(0),
             exits: vec![
-                Exit { price: dec!(1.1100), quantity: dec!(1.0) }, // +0.0100 * 1
-                Exit { price: dec!(1.1200), quantity: dec!(1.0) }, // +0.0200 * 1
+                Exit {
+                    price: dec!(1.1100),
+                    quantity: dec!(1.0),
+                }, // +0.0100 * 1
+                Exit {
+                    price: dec!(1.1200),
+                    quantity: dec!(1.0),
+                }, // +0.0200 * 1
             ],
         };
         let r = compute_r(&t).unwrap();
@@ -159,7 +168,10 @@ mod tests {
             initial_stop: dec!(1.1100),
             is_long: false,
             cost_per_unit: dec!(0),
-            exits: vec![Exit { price: dec!(1.0950), quantity: dec!(1.0) }],
+            exits: vec![Exit {
+                price: dec!(1.0950),
+                quantity: dec!(1.0),
+            }],
         };
         let r = compute_r(&t).unwrap();
         // risk = 0.0050; profit = 0.0100; R = 2.0

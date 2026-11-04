@@ -86,11 +86,14 @@ pub fn summarize(trades: &[Trade], initial_balance: Decimal) -> Summary {
     let mut equity = initial_balance;
     let mut equity_curve: Vec<EquityPoint> = vec![EquityPoint { t: 0, v: equity }];
 
-    let mut closed: Vec<&Trade> = trades.iter()
+    let mut closed: Vec<&Trade> = trades
+        .iter()
         .filter(|t| t.status == TradeStatus::Closed)
         .collect();
     closed.sort_by(|a, b| {
-        a.closed_at.as_deref().unwrap_or("")
+        a.closed_at
+            .as_deref()
+            .unwrap_or("")
             .cmp(b.closed_at.as_deref().unwrap_or(""))
     });
 
@@ -118,7 +121,10 @@ pub fn summarize(trades: &[Trade], initial_balance: Decimal) -> Summary {
         }
         net_pnl += trade_net;
         equity += trade_net;
-        equity_curve.push(EquityPoint { t: equity_curve.len(), v: equity });
+        equity_curve.push(EquityPoint {
+            t: equity_curve.len(),
+            v: equity,
+        });
 
         r_details.push(TradeRDetail {
             id: t.id,
@@ -138,7 +144,11 @@ pub fn summarize(trades: &[Trade], initial_balance: Decimal) -> Summary {
     };
 
     let profit_factor = if gross_loss.is_zero() {
-        if gross_profit > Decimal::ZERO { Decimal::from(999) } else { Decimal::ZERO }
+        if gross_profit > Decimal::ZERO {
+            Decimal::from(999)
+        } else {
+            Decimal::ZERO
+        }
     } else {
         gross_profit / gross_loss
     };
@@ -152,25 +162,34 @@ pub fn summarize(trades: &[Trade], initial_balance: Decimal) -> Summary {
 
     let (wins_r, losses_r): (Vec<Decimal>, Vec<Decimal>) =
         r_values.iter().copied().partition(|r| *r > Decimal::ZERO);
-    let avg_win_r = if wins_r.is_empty() { Decimal::ZERO }
-        else { wins_r.iter().copied().sum::<Decimal>() / Decimal::from(wins_r.len() as u32) };
-    let avg_loss_r = if losses_r.is_empty() { Decimal::ZERO }
-        else { losses_r.iter().copied().sum::<Decimal>() / Decimal::from(losses_r.len() as u32) };
+    let avg_win_r = if wins_r.is_empty() {
+        Decimal::ZERO
+    } else {
+        wins_r.iter().copied().sum::<Decimal>() / Decimal::from(wins_r.len() as u32)
+    };
+    let avg_loss_r = if losses_r.is_empty() {
+        Decimal::ZERO
+    } else {
+        losses_r.iter().copied().sum::<Decimal>() / Decimal::from(losses_r.len() as u32)
+    };
 
     let r_distribution = build_r_buckets(&r_values);
 
     let equity_series: Vec<Decimal> = equity_curve.iter().map(|p| p.v).collect();
-    let dd_result: DrawdownResult = compute_drawdown(&equity_series)
-        .unwrap_or(DrawdownResult {
-            series: vec![],
-            max_drawdown: Decimal::ZERO,
-            max_drawdown_pct: Decimal::ZERO,
-            max_drawdown_index: 0,
-        });
-    let drawdown_curve: Vec<EquityPoint> = dd_result.series.iter()
-        .map(|p| EquityPoint { t: p.index, v: p.drawdown_pct * Decimal::from(100) })
+    let dd_result: DrawdownResult = compute_drawdown(&equity_series).unwrap_or(DrawdownResult {
+        series: vec![],
+        max_drawdown: Decimal::ZERO,
+        max_drawdown_pct: Decimal::ZERO,
+        max_drawdown_index: 0,
+    });
+    let drawdown_curve: Vec<EquityPoint> = dd_result
+        .series
+        .iter()
+        .map(|p| EquityPoint {
+            t: p.index,
+            v: p.drawdown_pct * Decimal::from(100),
+        })
         .collect();
-
 
     // --- R:R and outcome analysis ---
     let mut planned_rr_sum = Decimal::ZERO;
@@ -220,10 +239,16 @@ pub fn summarize(trades: &[Trade], initial_balance: Decimal) -> Summary {
         }
     }
 
-    let avg_planned = if planned_rr_count.is_zero() { Decimal::ZERO }
-        else { planned_rr_sum / planned_rr_count };
-    let avg_realized = if realized_r_count.is_zero() { Decimal::ZERO }
-        else { realized_r_sum / realized_r_count };
+    let avg_planned = if planned_rr_count.is_zero() {
+        Decimal::ZERO
+    } else {
+        planned_rr_sum / planned_rr_count
+    };
+    let avg_realized = if realized_r_count.is_zero() {
+        Decimal::ZERO
+    } else {
+        realized_r_sum / realized_r_count
+    };
     let denom = (tp_hit + sl_hit + manual + breakeven).max(1);
     let adherence_pct = Decimal::from(adherent) / Decimal::from(denom) * Decimal::from(100);
 
@@ -261,19 +286,27 @@ pub fn summarize(trades: &[Trade], initial_balance: Decimal) -> Summary {
 }
 
 fn compute_trade_r(t: &Trade) -> Result<(Decimal, Decimal), &'static str> {
-    let entries: Vec<_> = t.legs.iter()
+    let entries: Vec<_> = t
+        .legs
+        .iter()
         .filter(|l| matches!(l.kind, crate::domain::trade::LegKind::Entry))
         .collect();
-    let exits: Vec<_> = t.legs.iter()
+    let exits: Vec<_> = t
+        .legs
+        .iter()
         .filter(|l| matches!(l.kind, crate::domain::trade::LegKind::Exit))
         .collect();
-    if entries.is_empty() || exits.is_empty() { return Err("no legs"); }
+    if entries.is_empty() || exits.is_empty() {
+        return Err("no legs");
+    }
 
     let total_qty: Decimal = entries.iter().map(|l| l.quantity).sum();
-    if total_qty != t.total_quantity { return Err("qty mismatch"); }
+    if total_qty != t.total_quantity {
+        return Err("qty mismatch");
+    }
 
-    let cost_per_unit: Decimal = exits.iter().map(|l| l.cost_per_unit).sum::<Decimal>()
-        / Decimal::from(exits.len() as u32);
+    let cost_per_unit: Decimal =
+        exits.iter().map(|l| l.cost_per_unit).sum::<Decimal>() / Decimal::from(exits.len() as u32);
 
     let trade_r = TradeR {
         total_quantity: t.total_quantity,
@@ -281,7 +314,13 @@ fn compute_trade_r(t: &Trade) -> Result<(Decimal, Decimal), &'static str> {
         initial_stop: t.initial_stop,
         is_long: t.side == Side::Long,
         cost_per_unit,
-        exits: exits.iter().map(|l| Exit { price: l.price, quantity: l.quantity }).collect(),
+        exits: exits
+            .iter()
+            .map(|l| Exit {
+                price: l.price,
+                quantity: l.quantity,
+            })
+            .collect(),
     };
 
     let result = compute_r(&trade_r).map_err(|_| "compute_r failed")?;
@@ -299,25 +338,42 @@ fn compute_trade_r(t: &Trade) -> Result<(Decimal, Decimal), &'static str> {
 }
 
 fn build_r_buckets(r_values: &[Decimal]) -> Vec<RBucket> {
-    let labels = ["≤ -2R", "-2R..-1R", "-1R..0R", "0R..1R", "1R..2R", "2R..3R", "> 3R"];
+    let labels = [
+        "≤ -2R", "-2R..-1R", "-1R..0R", "0R..1R", "1R..2R", "2R..3R", "> 3R",
+    ];
     let mut counts = [0u32; 7];
 
     for &r in r_values {
-        let idx = if r <= Decimal::from(-2) { 0 }
-            else if r <= Decimal::from(-1) { 1 }
-            else if r < Decimal::ZERO { 2 }
-            else if r < Decimal::ONE { 3 }
-            else if r < Decimal::from(2) { 4 }
-            else if r < Decimal::from(3) { 5 }
-            else { 6 };
+        let idx = if r <= Decimal::from(-2) {
+            0
+        } else if r <= Decimal::from(-1) {
+            1
+        } else if r < Decimal::ZERO {
+            2
+        } else if r < Decimal::ONE {
+            3
+        } else if r < Decimal::from(2) {
+            4
+        } else if r < Decimal::from(3) {
+            5
+        } else {
+            6
+        };
         counts[idx] += 1;
     }
 
-    labels.iter().zip(counts.iter())
-        .map(|(l, c)| RBucket { label: l.to_string(), count: *c })
+    labels
+        .iter()
+        .zip(counts.iter())
+        .map(|(l, c)| RBucket {
+            label: l.to_string(),
+            count: *c,
+        })
         .collect()
 }
 
 // Silence: FromStr kept for future use (String -> Decimal)
 #[allow(dead_code)]
-fn _keep_from_str() { let _ = Decimal::from_str("0"); }
+fn _keep_from_str() {
+    let _ = Decimal::from_str("0");
+}

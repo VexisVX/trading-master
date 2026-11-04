@@ -10,21 +10,21 @@ use std::path::Path;
 use thiserror::Error;
 
 pub mod accounts;
-pub mod goals;
-pub mod instruments;
-pub mod equity;
-pub mod backtest;
 pub mod app_settings;
+pub mod backtest;
 pub mod backup;
 pub mod csv_export;
+pub mod equity;
+pub mod goals;
+pub mod instruments;
 
 pub mod live_presets;
-pub mod prop_firm;
 pub mod profiles;
+pub mod prop_firm;
 pub mod risk_settings;
 pub mod strategies;
-pub mod trading_plans;
 pub mod trades;
+pub mod trading_plans;
 
 #[derive(Debug, Error)]
 pub enum DbError {
@@ -49,6 +49,7 @@ pub fn init_db(db_path: &Path) -> Result<Connection, DbError> {
     let _ = equity::ensure_snapshot_detail_columns(&conn);
     ensure_goals_table(&conn)?;
     let _ = equity::ensure_decision_detail_columns(&conn);
+    let _ = equity::ensure_decision_instrument_columns(&conn);
     let _ = equity::ensure_snapshot_account_id(&conn);
     Ok(conn)
 }
@@ -73,7 +74,7 @@ fn set_version(conn: &Connection, v: i64) -> Result<(), DbError> {
     Ok(())
 }
 
-const CURRENT_VERSION: i64 = 28;
+const CURRENT_VERSION: i64 = 29;
 
 fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     let mut v = current_version(conn)?;
@@ -85,33 +86,146 @@ fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
         let _ = backup::create_backup(conn, db_path, &backups.join(name));
     }
 
-    if v < 2 { conn.execute_batch(MIGRATION_002)?; set_version(conn, 2)?; v = 2; }
-    if v < 3 { conn.execute_batch(MIGRATION_003)?; set_version(conn, 3)?; v = 3; }
-    if v < 4 { conn.execute_batch(MIGRATION_004)?; set_version(conn, 4)?; v = 4; }
-    if v < 5 { conn.execute_batch(MIGRATION_005)?; set_version(conn, 5)?; v = 5; }
-    if v < 6 { conn.execute_batch(MIGRATION_006)?; set_version(conn, 6)?; v = 6; }
-    if v < 7 { conn.execute_batch(MIGRATION_007)?; set_version(conn, 7)?; v = 7; }
-    if v < 8 { conn.execute_batch(MIGRATION_008)?; set_version(conn, 8)?; v = 8; }
-    if v < 9 { conn.execute_batch(MIGRATION_009)?; set_version(conn, 9)?; v = 9; }
-    if v < 10 { conn.execute_batch(MIGRATION_010)?; set_version(conn, 10)?; v = 10; }
-    if v < 11 { conn.execute_batch(MIGRATION_011)?; set_version(conn, 11)?; v = 11; }
-    if v < 12 { conn.execute_batch(MIGRATION_012)?; set_version(conn, 12)?; v = 12; }
-    if v < 13 { conn.execute_batch(MIGRATION_013)?; set_version(conn, 13)?; v = 13; }
-    if v < 14 { conn.execute_batch(MIGRATION_014)?; set_version(conn, 14)?; v = 14; }
-    if v < 15 { conn.execute_batch(MIGRATION_015)?; set_version(conn, 15)?; v = 15; }
-    if v < 16 { conn.execute_batch(MIGRATION_016)?; set_version(conn, 16)?; v = 16; }
-    if v < 17 { conn.execute_batch(MIGRATION_017)?; set_version(conn, 17)?; v = 17; }
-    if v < 18 { conn.execute_batch(MIGRATION_018)?; set_version(conn, 18)?; v = 18; }
-    if v < 19 { conn.execute_batch(MIGRATION_019)?; set_version(conn, 19)?; v = 19; }
-    if v < 20 { conn.execute_batch(MIGRATION_020)?; set_version(conn, 20)?; v = 20; }
-    if v < 21 { conn.execute_batch(MIGRATION_021)?; set_version(conn, 21)?; v = 21; }
-    if v < 22 { conn.execute_batch(MIGRATION_022)?; set_version(conn, 22)?; v = 22; }
-    if v < 23 { conn.execute_batch(MIGRATION_023)?; set_version(conn, 23)?; v = 23; }
-    if v < 24 { conn.execute_batch(MIGRATION_024)?; set_version(conn, 24)?; v = 24; }
-    if v < 25 { conn.execute_batch(MIGRATION_025)?; set_version(conn, 25)?; v = 25; }
-    if v < 26 { conn.execute_batch(MIGRATION_026)?; set_version(conn, 26)?; v = 26; }
-    if v < 27 { conn.execute_batch(MIGRATION_027)?; set_version(conn, 27)?; v = 27; }
-    if v < 28 { conn.execute_batch(MIGRATION_028)?; set_version(conn, 28)?; v = 28; }
+    if v < 2 {
+        conn.execute_batch(MIGRATION_002)?;
+        set_version(conn, 2)?;
+        v = 2;
+    }
+    if v < 3 {
+        conn.execute_batch(MIGRATION_003)?;
+        set_version(conn, 3)?;
+        v = 3;
+    }
+    if v < 4 {
+        conn.execute_batch(MIGRATION_004)?;
+        set_version(conn, 4)?;
+        v = 4;
+    }
+    if v < 5 {
+        conn.execute_batch(MIGRATION_005)?;
+        set_version(conn, 5)?;
+        v = 5;
+    }
+    if v < 6 {
+        conn.execute_batch(MIGRATION_006)?;
+        set_version(conn, 6)?;
+        v = 6;
+    }
+    if v < 7 {
+        conn.execute_batch(MIGRATION_007)?;
+        set_version(conn, 7)?;
+        v = 7;
+    }
+    if v < 8 {
+        conn.execute_batch(MIGRATION_008)?;
+        set_version(conn, 8)?;
+        v = 8;
+    }
+    if v < 9 {
+        conn.execute_batch(MIGRATION_009)?;
+        set_version(conn, 9)?;
+        v = 9;
+    }
+    if v < 10 {
+        conn.execute_batch(MIGRATION_010)?;
+        set_version(conn, 10)?;
+        v = 10;
+    }
+    if v < 11 {
+        conn.execute_batch(MIGRATION_011)?;
+        set_version(conn, 11)?;
+        v = 11;
+    }
+    if v < 12 {
+        conn.execute_batch(MIGRATION_012)?;
+        set_version(conn, 12)?;
+        v = 12;
+    }
+    if v < 13 {
+        conn.execute_batch(MIGRATION_013)?;
+        set_version(conn, 13)?;
+        v = 13;
+    }
+    if v < 14 {
+        conn.execute_batch(MIGRATION_014)?;
+        set_version(conn, 14)?;
+        v = 14;
+    }
+    if v < 15 {
+        conn.execute_batch(MIGRATION_015)?;
+        set_version(conn, 15)?;
+        v = 15;
+    }
+    if v < 16 {
+        conn.execute_batch(MIGRATION_016)?;
+        set_version(conn, 16)?;
+        v = 16;
+    }
+    if v < 17 {
+        conn.execute_batch(MIGRATION_017)?;
+        set_version(conn, 17)?;
+        v = 17;
+    }
+    if v < 18 {
+        conn.execute_batch(MIGRATION_018)?;
+        set_version(conn, 18)?;
+        v = 18;
+    }
+    if v < 19 {
+        conn.execute_batch(MIGRATION_019)?;
+        set_version(conn, 19)?;
+        v = 19;
+    }
+    if v < 20 {
+        conn.execute_batch(MIGRATION_020)?;
+        set_version(conn, 20)?;
+        v = 20;
+    }
+    if v < 21 {
+        conn.execute_batch(MIGRATION_021)?;
+        set_version(conn, 21)?;
+        v = 21;
+    }
+    if v < 22 {
+        conn.execute_batch(MIGRATION_022)?;
+        set_version(conn, 22)?;
+        v = 22;
+    }
+    if v < 23 {
+        conn.execute_batch(MIGRATION_023)?;
+        set_version(conn, 23)?;
+        v = 23;
+    }
+    if v < 24 {
+        conn.execute_batch(MIGRATION_024)?;
+        set_version(conn, 24)?;
+        v = 24;
+    }
+    if v < 25 {
+        conn.execute_batch(MIGRATION_025)?;
+        set_version(conn, 25)?;
+        v = 25;
+    }
+    if v < 26 {
+        conn.execute_batch(MIGRATION_026)?;
+        set_version(conn, 26)?;
+        v = 26;
+    }
+    if v < 27 {
+        conn.execute_batch(MIGRATION_027)?;
+        set_version(conn, 27)?;
+        v = 27;
+    }
+    if v < 28 {
+        conn.execute_batch(MIGRATION_028)?;
+        set_version(conn, 28)?;
+        v = 28;
+    }
+    if v < 29 {
+        conn.execute_batch(MIGRATION_029)?;
+        set_version(conn, 29)?;
+        v = 29;
+    }
     let _ = v;
 
     Ok(())
@@ -272,7 +386,6 @@ SET size_type = 'lots', size_value = total_quantity
 WHERE size_value IS NULL;
 "#;
 
-
 const MIGRATION_010: &str = r#"
 ALTER TABLE trades ADD COLUMN manual_pnl TEXT;
 "#;
@@ -297,7 +410,6 @@ CREATE TABLE trade_drafts (
 );
 CREATE INDEX idx_drafts_account ON trade_drafts(account_id);
 "#;
-
 
 const MIGRATION_012: &str = r#"
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -566,14 +678,11 @@ LEFT JOIN equity_units u ON u.account_id = a.id
 WHERE u.id IS NULL;
 "#;
 
-
-
-
-
-
-
-
-
+const MIGRATION_029: &str = r#"
+-- PHASE 4: instrument audit for sizing decisions
+ALTER TABLE equity_decisions ADD COLUMN instrument_symbol TEXT;
+ALTER TABLE equity_decisions ADD COLUMN instrument_spec_json TEXT;
+"#;
 
 // ============================================================
 // Meta helpers
@@ -588,7 +697,6 @@ pub fn get_meta(conn: &Connection, key: &str) -> Result<Option<String>, DbError>
         Ok(None)
     }
 }
-
 
 // ============================================================
 // Ensure account_goals table exists (idempotent)

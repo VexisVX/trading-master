@@ -13,8 +13,7 @@ pub fn analytics_summary(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
     // Load trades for the specific account (or all if None)
-    let trades = trades_db::list_trades(&conn, account_id, 500, 0)
-        .map_err(|e| e.to_string())?;
+    let trades = trades_db::list_trades(&conn, account_id, 500, 0).map_err(|e| e.to_string())?;
 
     // Read initial balance from the specified account (or active default)
     let balance_str: String = match account_id {
@@ -60,8 +59,10 @@ pub fn analytics_recent_r(state: State<AppState>, limit: i64) -> Result<String, 
 
 #[tauri::command]
 pub fn analytics_breakdown(
-    state: State<AppState>, account_id: i64,
-    from_date: Option<String>, to_date: Option<String>,
+    state: State<AppState>,
+    account_id: i64,
+    from_date: Option<String>,
+    to_date: Option<String>,
 ) -> Result<String, String> {
     use crate::analytics::breakdown::compute_breakdown;
     use crate::db::{strategies as strat_db, trades as trades_db};
@@ -70,23 +71,40 @@ pub fn analytics_breakdown(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let all_trades = trades_db::list_trades(&conn, None, 500, 0).map_err(|e| e.to_string())?;
 
-    let mut trades: Vec<_> = all_trades.into_iter().filter(|t| t.account_id == account_id).collect();
+    let mut trades: Vec<_> = all_trades
+        .into_iter()
+        .filter(|t| t.account_id == account_id)
+        .collect();
 
     // Apply date range filter on closed_at
     if let Some(from) = &from_date {
-        trades = trades.into_iter().filter(|t| {
-            t.closed_at.as_deref().map(|c| c.get(0..10).map(|d| d >= from.as_str()).unwrap_or(false)).unwrap_or(false)
-        }).collect();
+        trades = trades
+            .into_iter()
+            .filter(|t| {
+                t.closed_at
+                    .as_deref()
+                    .map(|c| c.get(0..10).map(|d| d >= from.as_str()).unwrap_or(false))
+                    .unwrap_or(false)
+            })
+            .collect();
     }
     if let Some(to) = &to_date {
-        trades = trades.into_iter().filter(|t| {
-            t.closed_at.as_deref().map(|c| c.get(0..10).map(|d| d <= to.as_str()).unwrap_or(false)).unwrap_or(false)
-        }).collect();
+        trades = trades
+            .into_iter()
+            .filter(|t| {
+                t.closed_at
+                    .as_deref()
+                    .map(|c| c.get(0..10).map(|d| d <= to.as_str()).unwrap_or(false))
+                    .unwrap_or(false)
+            })
+            .collect();
     }
 
     let strategies = strat_db::list_strategies(&conn).map_err(|e| e.to_string())?;
     let mut names: HashMap<i64, String> = HashMap::new();
-    for s in strategies { names.insert(s.id, s.name); }
+    for s in strategies {
+        names.insert(s.id, s.name);
+    }
 
     let b = compute_breakdown(&trades, &names);
     serde_json::to_string(&b).map_err(|e| e.to_string())
@@ -107,10 +125,7 @@ pub struct PeriodPnl {
 }
 
 #[tauri::command]
-pub fn analytics_period_pnl(
-    state: State<AppState>,
-    account_id: i64,
-) -> Result<PeriodPnl, String> {
+pub fn analytics_period_pnl(state: State<AppState>, account_id: i64) -> Result<PeriodPnl, String> {
     use chrono::{Datelike, Utc, Weekday};
     use rust_decimal::prelude::FromStr;
 

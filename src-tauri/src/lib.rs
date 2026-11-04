@@ -1,3 +1,10 @@
+
+#![allow(clippy::doc_lazy_continuation)]
+#![allow(clippy::needless_return)]
+#![allow(clippy::single_match)]
+#![allow(clippy::redundant_field_names)]
+#![allow(dead_code)]
+
 mod analytics;
 mod commands;
 mod db;
@@ -55,10 +62,14 @@ pub fn run() {
             commands::equity::equity_profile_get,
             commands::equity::equity_profile_set,
             commands::equity::equity_instruments_list,
+            commands::equity::equity_instruments_restore_defaults,
+            commands::equity::equity_instruments_export_json,
+            commands::equity::equity_instruments_import_json,
             commands::equity::equity_cashflow_deposit,
             commands::equity::equity_cashflow_withdraw,
             commands::equity::equity_cashflow_fee,
             commands::equity::equity_cashflow_list,
+            commands::equity::equity_cashflow_delete,
             commands::equity::equity_instrument_upsert,
             commands::equity::equity_instrument_delete,
             commands::equity::equity_decision_record,
@@ -69,11 +80,6 @@ pub fn run() {
             commands::backtest::backtest_setup_tags,
             commands::backtest::backtest_symbols,
             commands::backtest::backtest_stats,
-            
-            
-            
-            
-            
             commands::trades::trades_list,
             commands::trades::trades_get,
             commands::trades::trades_add_exit,
@@ -111,7 +117,6 @@ pub fn run() {
             commands::news::fmp_calendar_fetch,
             commands::news::finnhub_news,
             commands::settings::settings_delete,
-
             commands::storage::storage_stats,
             commands::settings::settings_set,
             commands::settings::settings_get,

@@ -2,8 +2,8 @@
 
 use super::DbError;
 use rusqlite::Connection;
-use rust_decimal::Decimal;
 use rust_decimal::prelude::FromStr;
+use rust_decimal::Decimal;
 
 #[derive(Debug, Clone)]
 pub struct InstrumentRow {
@@ -41,9 +41,18 @@ pub fn upsert(conn: &Connection, r: &InstrumentRow) -> Result<(), DbError> {
            spec_source=excluded.spec_source,
            updated_at=excluded.updated_at",
         rusqlite::params![
-            r.symbol, r.currency, r.tick_size, r.tick_value, r.contract_size,
-            r.min_qty, r.max_qty, r.lot_step, r.commission_per_lot, r.slippage_per_unit,
-            r.spec_source, now,
+            r.symbol,
+            r.currency,
+            r.tick_size,
+            r.tick_value,
+            r.contract_size,
+            r.min_qty,
+            r.max_qty,
+            r.lot_step,
+            r.commission_per_lot,
+            r.slippage_per_unit,
+            r.spec_source,
+            now,
         ],
     )?;
     Ok(())
@@ -59,10 +68,16 @@ pub fn get(conn: &Connection, symbol: &str) -> Result<Option<InstrumentRow>, DbE
     let mut rows = stmt.query([symbol])?;
     if let Some(r) = rows.next()? {
         Ok(Some(InstrumentRow {
-            symbol: r.get(0)?, currency: r.get(1)?,
-            tick_size: r.get(2)?, tick_value: r.get(3)?, contract_size: r.get(4)?,
-            min_qty: r.get(5)?, max_qty: r.get(6)?, lot_step: r.get(7)?,
-            commission_per_lot: r.get(8)?, slippage_per_unit: r.get(9)?,
+            symbol: r.get(0)?,
+            currency: r.get(1)?,
+            tick_size: r.get(2)?,
+            tick_value: r.get(3)?,
+            contract_size: r.get(4)?,
+            min_qty: r.get(5)?,
+            max_qty: r.get(6)?,
+            lot_step: r.get(7)?,
+            commission_per_lot: r.get(8)?,
+            slippage_per_unit: r.get(9)?,
             spec_source: r.get(10)?,
         }))
     } else {
@@ -96,18 +111,23 @@ mod tests {
                spec_source TEXT NOT NULL DEFAULT 'user_entered',
                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
              );",
-        ).unwrap();
+        )
+        .unwrap();
         c
     }
 
     fn row() -> InstrumentRow {
         InstrumentRow {
-            symbol: "EURUSD".into(), currency: "USD".into(),
-            tick_size: "0.0001".into(), tick_value: "1".into(),
+            symbol: "EURUSD".into(),
+            currency: "USD".into(),
+            tick_size: "0.0001".into(),
+            tick_value: "1".into(),
             contract_size: "100000".into(),
-            min_qty: "0.01".into(), max_qty: "100".into(),
+            min_qty: "0.01".into(),
+            max_qty: "100".into(),
             lot_step: "0.01".into(),
-            commission_per_lot: "0".into(), slippage_per_unit: "0".into(),
+            commission_per_lot: "0".into(),
+            slippage_per_unit: "0".into(),
             spec_source: "user_entered".into(),
         }
     }
@@ -132,7 +152,6 @@ mod tests {
     }
 }
 
-
 // ============================================================
 // Typed getter — returns InstrumentSpec ready for engine use
 // ============================================================
@@ -148,8 +167,12 @@ pub fn get_typed(
     let Some(r) = raw else { return Ok(None) };
 
     let d = |s: &str, name: &str| -> Result<Decimal, DbError> {
-        Decimal::from_str(s).map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
-            .map_err(|e| { eprintln!("instrument {symbol} {name}: bad decimal"); e })
+        Decimal::from_str(s)
+            .map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
+            .map_err(|e| {
+                eprintln!("instrument {symbol} {name}: bad decimal");
+                e
+            })
     };
 
     let spec = InstrumentSpec {
@@ -190,22 +213,31 @@ mod get_typed_tests {
                spec_source TEXT NOT NULL DEFAULT 'user_entered',
                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
              );",
-        ).unwrap();
+        )
+        .unwrap();
         c
     }
 
     #[test]
     fn typed_get_works() {
         let c = fresh();
-        upsert(&c, &InstrumentRow {
-            symbol: "EURUSD".into(), currency: "USD".into(),
-            tick_size: "0.00001".into(), tick_value: "1".into(),
-            contract_size: "100000".into(),
-            min_qty: "0.01".into(), max_qty: "100".into(),
-            lot_step: "0.01".into(),
-            commission_per_lot: "0".into(), slippage_per_unit: "0".into(),
-            spec_source: "user_entered".into(),
-        }).unwrap();
+        upsert(
+            &c,
+            &InstrumentRow {
+                symbol: "EURUSD".into(),
+                currency: "USD".into(),
+                tick_size: "0.00001".into(),
+                tick_value: "1".into(),
+                contract_size: "100000".into(),
+                min_qty: "0.01".into(),
+                max_qty: "100".into(),
+                lot_step: "0.01".into(),
+                commission_per_lot: "0".into(),
+                slippage_per_unit: "0".into(),
+                spec_source: "user_entered".into(),
+            },
+        )
+        .unwrap();
         let s = get_typed(&c, "EURUSD").unwrap().unwrap();
         assert_eq!(s.tick_size, dec!(0.00001));
         assert_eq!(s.contract_size, dec!(100000));

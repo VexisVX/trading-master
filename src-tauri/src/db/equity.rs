@@ -74,8 +74,6 @@ CREATE TABLE IF NOT EXISTS recovery_authorizations (
 CREATE INDEX IF NOT EXISTS idx_recovery_account ON recovery_authorizations(account_id);
 "#;
 
-
-
 pub fn init_equity_schema(conn: &Connection) -> Result<(), DbError> {
     conn.execute_batch(MIGRATION_001)?;
     conn.execute_batch(EQUITY_MIGRATION_002)?;
@@ -129,11 +127,25 @@ pub fn insert_snapshot(conn: &Connection, s: &SnapshotRow) -> Result<i64, DbErro
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
         rusqlite::params![
             s.account_id,
-            s.equity, s.initial_balance, s.high_watermark, s.low_watermark,
-            s.day_start_equity, s.open_portfolio_risk, s.daily_loss,
-            s.consecutive_losses, s.taken_at, now,
-            s.phase, s.protected_profit, s.equity_floor, s.loss_capacity,
-            s.state, s.buffer_r, s.m_preserve, s.f_internal, s.f_prop_val,
+            s.equity,
+            s.initial_balance,
+            s.high_watermark,
+            s.low_watermark,
+            s.day_start_equity,
+            s.open_portfolio_risk,
+            s.daily_loss,
+            s.consecutive_losses,
+            s.taken_at,
+            now,
+            s.phase,
+            s.protected_profit,
+            s.equity_floor,
+            s.loss_capacity,
+            s.state,
+            s.buffer_r,
+            s.m_preserve,
+            s.f_internal,
+            s.f_prop_val,
         ],
     );
 
@@ -148,10 +160,20 @@ pub fn insert_snapshot(conn: &Connection, s: &SnapshotRow) -> Result<i64, DbErro
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
             rusqlite::params![
                 s.account_id,
-                s.equity, s.initial_balance, s.high_watermark, s.low_watermark,
-                s.day_start_equity, s.open_portfolio_risk, s.daily_loss,
-                s.consecutive_losses, s.taken_at, now,
-                s.phase, s.protected_profit, s.equity_floor, s.loss_capacity,
+                s.equity,
+                s.initial_balance,
+                s.high_watermark,
+                s.low_watermark,
+                s.day_start_equity,
+                s.open_portfolio_risk,
+                s.daily_loss,
+                s.consecutive_losses,
+                s.taken_at,
+                now,
+                s.phase,
+                s.protected_profit,
+                s.equity_floor,
+                s.loss_capacity,
             ],
         )?;
     }
@@ -299,13 +321,15 @@ pub struct DecisionRow<'a> {
     pub config_json: &'a str,
     pub risk_reduced: bool,
     pub phase: &'a str,
+    pub instrument_symbol: Option<&'a str>,
+    pub instrument_spec_json: Option<&'a str>,
 }
 
 pub fn insert_decision(conn: &Connection, d: &DecisionRow) -> Result<i64, DbError> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
-        "INSERT INTO equity_decisions (snapshot_id, allowed, reason_kind, reason_detail, r_allowed, size, config_json, created_at, risk_reduced, phase) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO equity_decisions (snapshot_id, allowed, reason_kind, reason_detail, r_allowed, size, config_json, created_at, risk_reduced, phase, instrument_symbol, instrument_spec_json) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         rusqlite::params![
             d.snapshot_id,
             if d.allowed { 1 } else { 0 },
@@ -317,11 +341,12 @@ pub fn insert_decision(conn: &Connection, d: &DecisionRow) -> Result<i64, DbErro
             now,
             if d.risk_reduced { 1 } else { 0 },
             d.phase,
+            d.instrument_symbol,
+            d.instrument_spec_json,
         ],
     )?;
     Ok(conn.last_insert_rowid())
 }
-
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DecisionRowOut {
@@ -403,10 +428,7 @@ pub fn ensure_decision_detail_columns(conn: &rusqlite::Connection) -> rusqlite::
         }
     }
 
-    let additions = [
-        ("risk_reduced", "INTEGER"),
-        ("phase", "TEXT"),
-    ];
+    let additions = [("risk_reduced", "INTEGER"), ("phase", "TEXT")];
 
     for (col, ty) in additions.iter() {
         if !existing.iter().any(|e| e == col) {
@@ -429,12 +451,13 @@ pub fn ensure_snapshot_account_id(conn: &rusqlite::Connection) -> rusqlite::Resu
         }
     }
     if !existing.iter().any(|e| e == "account_id") {
-        conn.execute("ALTER TABLE equity_snapshots ADD COLUMN account_id INTEGER", [])?;
+        conn.execute(
+            "ALTER TABLE equity_snapshots ADD COLUMN account_id INTEGER",
+            [],
+        )?;
     }
     Ok(())
 }
-
-
 
 // Updated EquitySnapshotRow with new optional fields
 pub struct EquitySnapshotRowExt {
@@ -454,7 +477,6 @@ pub struct EquitySnapshotRowExt {
     pub loss_capacity: Option<String>,
 }
 
-
 // ============================================================
 // Migration: add NAV/Units columns to equity_snapshots (idempotent)
 // ============================================================
@@ -463,7 +485,9 @@ pub fn ensure_snapshot_nav_columns(conn: &rusqlite::Connection) -> rusqlite::Res
     {
         let mut stmt = conn.prepare("PRAGMA table_info(equity_snapshots)")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
-        for r in rows { existing.push(r?); }
+        for r in rows {
+            existing.push(r?);
+        }
     }
     let additions = [
         ("units", "TEXT"),
@@ -489,9 +513,17 @@ pub fn ensure_snapshot_nav_columns(conn: &rusqlite::Connection) -> rusqlite::Res
     {
         let mut stmt = conn.prepare("PRAGMA table_info(equity_decisions)")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
-        for r in rows { dec.push(r?); }
+        for r in rows {
+            dec.push(r?);
+        }
     }
-    for (col, ty) in [("state_from","TEXT"),("state_to","TEXT"),("buffer_r_at_decision","TEXT")].iter() {
+    for (col, ty) in [
+        ("state_from", "TEXT"),
+        ("state_to", "TEXT"),
+        ("buffer_r_at_decision", "TEXT"),
+    ]
+    .iter()
+    {
         if !dec.iter().any(|e| e == col) {
             conn.execute(
                 &format!("ALTER TABLE equity_decisions ADD COLUMN {} {}", col, ty),
@@ -501,7 +533,6 @@ pub fn ensure_snapshot_nav_columns(conn: &rusqlite::Connection) -> rusqlite::Res
     }
     Ok(())
 }
-
 
 // ============================================================
 // PHASE 3: units + cash-flow helpers
@@ -528,9 +559,13 @@ pub fn latest_units(conn: &Connection, account_id: i64) -> Result<Option<EquityU
     let mut rows = stmt.query([account_id])?;
     if let Some(r) = rows.next()? {
         Ok(Some(EquityUnitsRow {
-            id: r.get(0)?, account_id: r.get(1)?,
-            units: r.get(2)?, nav: r.get(3)?, equity: r.get(4)?,
-            source: r.get(5)?, taken_at: r.get(6)?,
+            id: r.get(0)?,
+            account_id: r.get(1)?,
+            units: r.get(2)?,
+            nav: r.get(3)?,
+            equity: r.get(4)?,
+            source: r.get(5)?,
+            taken_at: r.get(6)?,
         }))
     } else {
         Ok(None)
@@ -588,8 +623,16 @@ pub fn insert_cash_flow(
             nav_before, units_before, units_after, note, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         rusqlite::params![
-            account_id, kind, amount, currency, now,
-            nav_before, units_before, units_after, note, now,
+            account_id,
+            kind,
+            amount,
+            currency,
+            now,
+            nav_before,
+            units_before,
+            units_after,
+            note,
+            now,
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -607,12 +650,44 @@ pub fn list_cash_flows(
          WHERE account_id = ?1
          ORDER BY id DESC LIMIT ?2",
     )?;
-    let rows = stmt.query_map([account_id, limit], |r| Ok(CashFlowRow {
-        id: r.get(0)?, account_id: r.get(1)?,
-        kind: r.get(2)?, amount: r.get(3)?, currency: r.get(4)?,
-        occurred_at: r.get(5)?,
-        nav_before: r.get(6)?, units_before: r.get(7)?, units_after: r.get(8)?,
-        note: r.get(9)?,
-    }))?;
+    let rows = stmt.query_map([account_id, limit], |r| {
+        Ok(CashFlowRow {
+            id: r.get(0)?,
+            account_id: r.get(1)?,
+            kind: r.get(2)?,
+            amount: r.get(3)?,
+            currency: r.get(4)?,
+            occurred_at: r.get(5)?,
+            nav_before: r.get(6)?,
+            units_before: r.get(7)?,
+            units_after: r.get(8)?,
+            note: r.get(9)?,
+        })
+    })?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn ensure_decision_instrument_columns(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let mut existing: Vec<String> = Vec::new();
+    {
+        let mut stmt = conn.prepare("PRAGMA table_info(equity_decisions)")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
+        for r in rows {
+            existing.push(r?);
+        }
+    }
+    for (col, ty) in [
+        ("instrument_symbol", "TEXT"),
+        ("instrument_spec_json", "TEXT"),
+    ]
+    .iter()
+    {
+        if !existing.iter().any(|e| e == col) {
+            conn.execute(
+                &format!("ALTER TABLE equity_decisions ADD COLUMN {} {}", col, ty),
+                [],
+            )?;
+        }
+    }
+    Ok(())
 }

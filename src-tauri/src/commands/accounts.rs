@@ -37,14 +37,13 @@ pub fn accounts_list(state: State<AppState>) -> Result<Vec<Account>, String> {
             let kind_str: String = r.get(6)?;
 
             // Parse Decimal from string
-            let initial_balance = Decimal::from_str(&initial_balance_str)
-                .map_err(|e| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        3,
-                        rusqlite::types::Type::Text,
-                        Box::new(e),
-                    )
-                })?;
+            let initial_balance = Decimal::from_str(&initial_balance_str).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    3,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?;
 
             // Parse AccountKind from string
             let kind = crate::domain::account::AccountKind::from_str(&kind_str)
@@ -95,7 +94,9 @@ pub fn accounts_active_get(state: State<AppState>) -> Result<i64, String> {
         }
     }
     let id: i64 = conn
-        .query_row("SELECT id FROM accounts ORDER BY id LIMIT 1", [], |r| r.get(0))
+        .query_row("SELECT id FROM accounts ORDER BY id LIMIT 1", [], |r| {
+            r.get(0)
+        })
         .map_err(|e| e.to_string())?;
     Ok(id)
 }
@@ -104,7 +105,9 @@ pub fn accounts_active_get(state: State<AppState>) -> Result<i64, String> {
 pub fn accounts_active_set(state: State<AppState>, id: i64) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let exists: i64 = conn
-        .query_row("SELECT COUNT(*) FROM accounts WHERE id=?1", [id], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM accounts WHERE id=?1", [id], |r| {
+            r.get(0)
+        })
         .map_err(|e| e.to_string())?;
     if exists == 0 {
         return Err("account not found".into());
@@ -189,8 +192,8 @@ pub fn accounts_update(
         .map_err(|e| e.to_string())?;
     }
     if let Some(initial) = update.initial_balance {
-        use rust_decimal::Decimal;
         use rust_decimal::prelude::FromStr;
+        use rust_decimal::Decimal;
         let d = Decimal::from_str(&initial).map_err(|e| format!("initial: {}", e))?;
         if d <= Decimal::ZERO {
             return Err("initial_balance must be > 0".into());
@@ -233,19 +236,13 @@ pub fn accounts_reset(state: State<AppState>, id: i64) -> Result<(), String> {
 
     // 2) equity_decisions وابسته به این snapshotها
     for sid in &snapshot_ids {
-        conn.execute(
-            "DELETE FROM equity_decisions WHERE snapshot_id = ?1",
-            [sid],
-        )
-        .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM equity_decisions WHERE snapshot_id = ?1", [sid])
+            .map_err(|e| e.to_string())?;
     }
 
     // 3) equity_snapshots
-    conn.execute(
-        "DELETE FROM equity_snapshots WHERE account_id = ?1",
-        [id],
-    )
-    .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM equity_snapshots WHERE account_id = ?1", [id])
+        .map_err(|e| e.to_string())?;
 
     // 4) trade_ids این حساب
     let trade_ids: Vec<i64> = {
@@ -285,7 +282,11 @@ pub fn accounts_backup_json(state: State<AppState>, id: i64) -> Result<String, S
 
     // 1. Read account
     let (name, currency, initial_balance, kind, created_at): (
-        String, String, String, String, String,
+        String,
+        String,
+        String,
+        String,
+        String,
     ) = conn
         .query_row(
             "SELECT name, currency, initial_balance, COALESCE(kind, 'personal'), created_at
@@ -445,8 +446,7 @@ pub fn accounts_backup_json(state: State<AppState>, id: i64) -> Result<String, S
         "snapshots": snapshots,
     });
 
-    let json_str = serde_json::to_string_pretty(&backup)
-        .map_err(|e| format!("json: {}", e))?;
+    let json_str = serde_json::to_string_pretty(&backup).map_err(|e| format!("json: {}", e))?;
 
     // 8. Write to backups/ folder in app data dir
     // App data dir: ~/.local/share/com.trading.manager/
@@ -456,18 +456,22 @@ pub fn accounts_backup_json(state: State<AppState>, id: i64) -> Result<String, S
         return Err("cannot determine app data dir".into());
     };
     let backups_dir = app_data_dir.join("backups");
-    fs::create_dir_all(&backups_dir)
-        .map_err(|e| format!("create backups dir: {}", e))?;
+    fs::create_dir_all(&backups_dir).map_err(|e| format!("create backups dir: {}", e))?;
 
     let safe_name: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let filename = format!("account_{}_{}.json", safe_name, timestamp);
     let filepath = backups_dir.join(&filename);
 
-    fs::write(&filepath, json_str)
-        .map_err(|e| format!("write backup: {}", e))?;
+    fs::write(&filepath, json_str).map_err(|e| format!("write backup: {}", e))?;
 
     Ok(filepath.to_string_lossy().to_string())
 }

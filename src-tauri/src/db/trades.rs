@@ -4,8 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use rust_decimal::Decimal;
 
 fn dec(s: &str) -> Result<Decimal, DbError> {
-    Decimal::from_str_exact(s)
-        .map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
+    Decimal::from_str_exact(s).map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
 }
 
 pub fn create_trade(conn: &Connection, t: &NewTrade) -> Result<i64, DbError> {
@@ -39,8 +38,11 @@ pub fn create_trade(conn: &Connection, t: &NewTrade) -> Result<i64, DbError> {
             "INSERT INTO trade_legs (trade_id, kind, price, quantity, executed_at, cost_per_unit)
              VALUES (?1,'entry',?2,?3,?4,?5)",
             params![
-                trade_id, leg.price.to_string(), leg.quantity.to_string(),
-                t.opened_at, leg.cost_per_unit.to_string()
+                trade_id,
+                leg.price.to_string(),
+                leg.quantity.to_string(),
+                t.opened_at,
+                leg.cost_per_unit.to_string()
             ],
         )?;
     }
@@ -68,48 +70,70 @@ pub fn get_trade(conn: &Connection, id: i64) -> Result<Option<Trade>, DbError> {
          FROM trades WHERE id = ?1",
     )?;
 
-    let row = stmt.query_row([id], |r| {
-        Ok((
-            r.get::<_, i64>(0)?,                         // id
-            r.get::<_, i64>(1)?,                         // account_id
-            r.get::<_, String>(2)?,                      // symbol
-            r.get::<_, String>(3)?,                      // side
-            r.get::<_, String>(4)?,                      // entry_price
-            r.get::<_, String>(5)?,                      // initial_stop
-            r.get::<_, Option<String>>(6)?,              // take_profit
-            r.get::<_, String>(7)?,                      // total_quantity
-            r.get::<_, Option<String>>(8)?,              // original_quantity
-            r.get::<_, String>(9)?,                      // outcome
-            r.get::<_, String>(10)?,                     // size_type
-            r.get::<_, Option<String>>(11)?,             // size_value
-            r.get::<_, Option<String>>(12)?,             // size_unit
-            r.get::<_, Option<String>>(13)?,             // manual_pnl
-            r.get::<_, Option<String>>(14)?,             // current_price
-            r.get::<_, Option<String>>(15)?,             // current_price_updated_at
-            r.get::<_, Option<String>>(16)?,             // current_price_source
-            r.get::<_, Option<String>>(17)?,             // current_stop
-            r.get::<_, String>(18)?,                     // status
-            r.get::<_, Option<i64>>(19)?,                // strategy_id
-            r.get::<_, String>(20)?,                     // opened_at
-            r.get::<_, Option<String>>(21)?,             // closed_at
-            r.get::<_, Option<String>>(22)?,             // notes
-            r.get::<_, Option<String>>(23)?,             // chart_url
-            r.get::<_, Option<String>>(24)?,             // screenshot_path
-            r.get::<_, String>(25)?,                     // created_at
-            r.get::<_, String>(26)?,                     // updated_at
-        ))
-    }).optional()?;
+    let row = stmt
+        .query_row([id], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,             // id
+                r.get::<_, i64>(1)?,             // account_id
+                r.get::<_, String>(2)?,          // symbol
+                r.get::<_, String>(3)?,          // side
+                r.get::<_, String>(4)?,          // entry_price
+                r.get::<_, String>(5)?,          // initial_stop
+                r.get::<_, Option<String>>(6)?,  // take_profit
+                r.get::<_, String>(7)?,          // total_quantity
+                r.get::<_, Option<String>>(8)?,  // original_quantity
+                r.get::<_, String>(9)?,          // outcome
+                r.get::<_, String>(10)?,         // size_type
+                r.get::<_, Option<String>>(11)?, // size_value
+                r.get::<_, Option<String>>(12)?, // size_unit
+                r.get::<_, Option<String>>(13)?, // manual_pnl
+                r.get::<_, Option<String>>(14)?, // current_price
+                r.get::<_, Option<String>>(15)?, // current_price_updated_at
+                r.get::<_, Option<String>>(16)?, // current_price_source
+                r.get::<_, Option<String>>(17)?, // current_stop
+                r.get::<_, String>(18)?,         // status
+                r.get::<_, Option<i64>>(19)?,    // strategy_id
+                r.get::<_, String>(20)?,         // opened_at
+                r.get::<_, Option<String>>(21)?, // closed_at
+                r.get::<_, Option<String>>(22)?, // notes
+                r.get::<_, Option<String>>(23)?, // chart_url
+                r.get::<_, Option<String>>(24)?, // screenshot_path
+                r.get::<_, String>(25)?,         // created_at
+                r.get::<_, String>(26)?,         // updated_at
+            ))
+        })
+        .optional()?;
 
     let Some((
-        tid, acc, sym, side_s,
-        entry_s, stop_s, tp_s,
-        qty_s, orig_qty_s, outcome_s, size_type_s,
-        size_value_s, size_unit,
+        tid,
+        acc,
+        sym,
+        side_s,
+        entry_s,
+        stop_s,
+        tp_s,
+        qty_s,
+        orig_qty_s,
+        outcome_s,
+        size_type_s,
+        size_value_s,
+        size_unit,
         manual_pnl_s,
-        current_price_s, current_price_updated_at, current_price_source, current_stop_s,
-        status_s, sid,
-        opened, closed, notes, chart_url, screenshot_path, created, updated,
-    )) = row else {
+        current_price_s,
+        current_price_updated_at,
+        current_price_source,
+        current_stop_s,
+        status_s,
+        sid,
+        opened,
+        closed,
+        notes,
+        chart_url,
+        screenshot_path,
+        created,
+        updated,
+    )) = row
+    else {
         return Ok(None);
     };
 
@@ -159,8 +183,12 @@ fn load_legs(conn: &Connection, trade_id: i64) -> Result<Vec<TradeLeg>, DbError>
     )?;
     let rows = stmt.query_map([trade_id], |r| {
         Ok((
-            r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?,
-            r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?,
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, String>(3)?,
+            r.get::<_, String>(4)?,
+            r.get::<_, String>(5)?,
         ))
     })?;
     let mut out = Vec::new();
@@ -182,7 +210,9 @@ fn load_tags(conn: &Connection, trade_id: i64) -> Result<Vec<String>, DbError> {
     let mut stmt = conn.prepare("SELECT tag FROM trade_tags WHERE trade_id=?1 ORDER BY id")?;
     let rows = stmt.query_map([trade_id], |r| r.get::<_, String>(0))?;
     let mut out = Vec::new();
-    for row in rows { out.push(row?); }
+    for row in rows {
+        out.push(row?);
+    }
     Ok(out)
 }
 
@@ -190,11 +220,18 @@ fn load_attachments(conn: &Connection, trade_id: i64) -> Result<Vec<Attachment>,
     let mut stmt = conn.prepare(
         "SELECT id, filename, kind, created_at FROM trade_attachments WHERE trade_id=?1 ORDER BY id"
     )?;
-    let rows = stmt.query_map([trade_id], |r| Ok(Attachment {
-        id: r.get(0)?, filename: r.get(1)?, kind: r.get(2)?, created_at: r.get(3)?,
-    }))?;
+    let rows = stmt.query_map([trade_id], |r| {
+        Ok(Attachment {
+            id: r.get(0)?,
+            filename: r.get(1)?,
+            kind: r.get(2)?,
+            created_at: r.get(3)?,
+        })
+    })?;
     let mut out = Vec::new();
-    for row in rows { out.push(row?); }
+    for row in rows {
+        out.push(row?);
+    }
     Ok(out)
 }
 
@@ -214,9 +251,8 @@ pub fn list_trades(
             .collect();
         result?
     } else {
-        let mut stmt = conn.prepare(
-            "SELECT id FROM trades ORDER BY opened_at DESC, id DESC LIMIT ?1 OFFSET ?2",
-        )?;
+        let mut stmt = conn
+            .prepare("SELECT id FROM trades ORDER BY opened_at DESC, id DESC LIMIT ?1 OFFSET ?2")?;
         let result: Result<Vec<i64>, _> = stmt
             .query_map(params![limit, offset], |r| r.get(0))?
             .collect();
@@ -233,19 +269,25 @@ pub fn list_trades(
 }
 
 fn sum_leg_quantities(conn: &Connection, trade_id: i64, kind: LegKind) -> Result<Decimal, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT quantity FROM trade_legs WHERE trade_id = ?1 AND kind = ?2",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT quantity FROM trade_legs WHERE trade_id = ?1 AND kind = ?2")?;
     let rows = stmt.query_map(params![trade_id, kind.as_str()], |r| r.get::<_, String>(0))?;
     let mut total = Decimal::ZERO;
-    for row in rows { total += dec(&row?)?; }
+    for row in rows {
+        total += dec(&row?)?;
+    }
     Ok(total)
 }
 
 pub fn add_exit_leg(
-    conn: &Connection, trade_id: i64, price: Decimal, quantity: Decimal,
-    cost_per_unit: Decimal, executed_at: String,
-    outcome: Option<TradeOutcome>, manual_pnl: Option<Decimal>,
+    conn: &Connection,
+    trade_id: i64,
+    price: Decimal,
+    quantity: Decimal,
+    cost_per_unit: Decimal,
+    executed_at: String,
+    outcome: Option<TradeOutcome>,
+    manual_pnl: Option<Decimal>,
 ) -> Result<(), DbError> {
     if quantity <= Decimal::ZERO {
         return Err(DbError::Sqlite(rusqlite::Error::InvalidQuery));
@@ -254,7 +296,9 @@ pub fn add_exit_leg(
     let tx = conn.unchecked_transaction()?;
 
     let total_qty_str: String = tx.query_row(
-        "SELECT total_quantity FROM trades WHERE id=?1", [trade_id], |r| r.get(0),
+        "SELECT total_quantity FROM trades WHERE id=?1",
+        [trade_id],
+        |r| r.get(0),
     )?;
     let total_qty = dec(&total_qty_str)?;
 
@@ -262,8 +306,11 @@ pub fn add_exit_leg(
         "INSERT INTO trade_legs (trade_id, kind, price, quantity, executed_at, cost_per_unit)
          VALUES (?1,'exit',?2,?3,?4,?5)",
         params![
-            trade_id, price.to_string(), quantity.to_string(),
-            executed_at, cost_per_unit.to_string()
+            trade_id,
+            price.to_string(),
+            quantity.to_string(),
+            executed_at,
+            cost_per_unit.to_string()
         ],
     )?;
 
@@ -271,13 +318,18 @@ pub fn add_exit_leg(
     let now = chrono::Utc::now().to_rfc3339();
 
     if exited >= total_qty {
-        let outcome_s = outcome.map(|o| o.as_str().to_string()).unwrap_or_else(|| "manual_close".to_string());
+        let outcome_s = outcome
+            .map(|o| o.as_str().to_string())
+            .unwrap_or_else(|| "manual_close".to_string());
         tx.execute(
             "UPDATE trades SET status='closed', outcome=?1, manual_pnl=?2, closed_at=?3, updated_at=?3 WHERE id=?4",
             params![outcome_s, manual_pnl.map(|d| d.to_string()), now, trade_id],
         )?;
     } else {
-        tx.execute("UPDATE trades SET updated_at=?1 WHERE id=?2", params![now, trade_id])?;
+        tx.execute(
+            "UPDATE trades SET updated_at=?1 WHERE id=?2",
+            params![now, trade_id],
+        )?;
     }
 
     tx.commit()?;
@@ -299,22 +351,37 @@ pub fn update_trade(conn: &Connection, id: i64, u: &UpdateTrade) -> Result<(), D
             chart_url=?13, screenshot_path=?14, updated_at=?15
          WHERE id=?16",
         params![
-            u.symbol, u.entry_price.to_string(), u.initial_stop.to_string(),
+            u.symbol,
+            u.entry_price.to_string(),
+            u.initial_stop.to_string(),
             u.take_profit.map(|d| d.to_string()),
             u.total_quantity.to_string(),
-            u.outcome.as_str(), u.size_type.as_str(),
-            u.size_value.map(|d| d.to_string()).unwrap_or_else(|| u.total_quantity.to_string()),
+            u.outcome.as_str(),
+            u.size_type.as_str(),
+            u.size_value
+                .map(|d| d.to_string())
+                .unwrap_or_else(|| u.total_quantity.to_string()),
             u.size_unit,
             u.manual_pnl.map(|d| d.to_string()),
-            u.strategy_id, u.notes, u.chart_url, u.screenshot_path, now, id
+            u.strategy_id,
+            u.notes,
+            u.chart_url,
+            u.screenshot_path,
+            now,
+            id
         ],
     )?;
-    if affected == 0 { return Err(DbError::Sqlite(rusqlite::Error::QueryReturnedNoRows)); }
+    if affected == 0 {
+        return Err(DbError::Sqlite(rusqlite::Error::QueryReturnedNoRows));
+    }
 
     tx.execute("DELETE FROM trade_tags WHERE trade_id=?1", [id])?;
     for tag in &u.tags {
         if !tag.trim().is_empty() {
-            tx.execute("INSERT INTO trade_tags (trade_id, tag) VALUES (?1, ?2)", params![id, tag.trim()])?;
+            tx.execute(
+                "INSERT INTO trade_tags (trade_id, tag) VALUES (?1, ?2)",
+                params![id, tag.trim()],
+            )?;
         }
     }
     tx.commit()?;
@@ -333,7 +400,10 @@ pub fn delete_trade(conn: &Connection, id: i64) -> Result<(), DbError> {
 }
 
 pub fn add_attachment(
-    conn: &Connection, trade_id: i64, filename: &str, kind: &str,
+    conn: &Connection,
+    trade_id: i64,
+    filename: &str,
+    kind: &str,
 ) -> Result<i64, DbError> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
@@ -346,12 +416,13 @@ pub fn add_attachment(
 
 pub fn remove_attachment(conn: &Connection, id: i64) -> Result<String, DbError> {
     let filename: String = conn.query_row(
-        "SELECT filename FROM trade_attachments WHERE id=?1", [id], |r| r.get(0),
+        "SELECT filename FROM trade_attachments WHERE id=?1",
+        [id],
+        |r| r.get(0),
     )?;
     conn.execute("DELETE FROM trade_attachments WHERE id=?1", [id])?;
     Ok(filename)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -390,15 +461,26 @@ mod tests {
 
     fn sample_trade(total: Decimal) -> NewTrade {
         NewTrade {
-            account_id: 1, symbol: "EURUSD".into(), side: Side::Long,
-            entry_price: dec!(1.1000), initial_stop: dec!(1.0950),
+            account_id: 1,
+            symbol: "EURUSD".into(),
+            side: Side::Long,
+            entry_price: dec!(1.1000),
+            initial_stop: dec!(1.0950),
             take_profit: Some(dec!(1.1100)),
             total_quantity: total,
-            size_type: SizeType::Lots, size_value: Some(total), size_unit: None,
+            size_type: SizeType::Lots,
+            size_value: Some(total),
+            size_unit: None,
             opened_at: "2026-10-20T10:00:00Z".into(),
-            notes: None, chart_url: None, screenshot_path: None,
+            notes: None,
+            chart_url: None,
+            screenshot_path: None,
             strategy_id: None,
-            entry_legs: vec![NewLeg { price: dec!(1.1000), quantity: total, cost_per_unit: Decimal::ZERO }],
+            entry_legs: vec![NewLeg {
+                price: dec!(1.1000),
+                quantity: total,
+                cost_per_unit: Decimal::ZERO,
+            }],
             tags: vec![],
         }
     }
@@ -417,8 +499,17 @@ mod tests {
     fn manual_pnl_persisted_on_close() {
         let conn = fresh_db();
         let id = create_trade(&conn, &sample_trade(dec!(1))).unwrap();
-        add_exit_leg(&conn, id, dec!(1.1100), dec!(1), Decimal::ZERO, "t".into(),
-            Some(TradeOutcome::TpHit), Some(dec!(420))).unwrap();
+        add_exit_leg(
+            &conn,
+            id,
+            dec!(1.1100),
+            dec!(1),
+            Decimal::ZERO,
+            "t".into(),
+            Some(TradeOutcome::TpHit),
+            Some(dec!(420)),
+        )
+        .unwrap();
         let t = get_trade(&conn, id).unwrap().unwrap();
         assert_eq!(t.status, TradeStatus::Closed);
         assert_eq!(t.outcome, TradeOutcome::TpHit);
@@ -429,8 +520,17 @@ mod tests {
     fn sl_hit_can_have_negative_pnl() {
         let conn = fresh_db();
         let id = create_trade(&conn, &sample_trade(dec!(1))).unwrap();
-        add_exit_leg(&conn, id, dec!(1.0950), dec!(1), Decimal::ZERO, "t".into(),
-            Some(TradeOutcome::SlHit), Some(dec!(-200))).unwrap();
+        add_exit_leg(
+            &conn,
+            id,
+            dec!(1.0950),
+            dec!(1),
+            Decimal::ZERO,
+            "t".into(),
+            Some(TradeOutcome::SlHit),
+            Some(dec!(-200)),
+        )
+        .unwrap();
         let t = get_trade(&conn, id).unwrap().unwrap();
         assert_eq!(t.manual_pnl, Some(dec!(-200)));
     }
@@ -440,8 +540,12 @@ mod tests {
 /// remaining quantity > 0. Adds an exit leg and updates `total_quantity`
 /// to the remaining amount. Keeps `original_quantity` unchanged.
 pub fn partial_close(
-    conn: &Connection, trade_id: i64, exit_price: Decimal,
-    exit_qty: Decimal, cost_per_unit: Decimal, executed_at: String,
+    conn: &Connection,
+    trade_id: i64,
+    exit_price: Decimal,
+    exit_qty: Decimal,
+    cost_per_unit: Decimal,
+    executed_at: String,
     manual_pnl: Option<Decimal>,
 ) -> Result<(), DbError> {
     if exit_qty <= Decimal::ZERO {
@@ -452,7 +556,9 @@ pub fn partial_close(
     let tx = conn.unchecked_transaction()?;
 
     let total_qty_s: String = tx.query_row(
-        "SELECT total_quantity FROM trades WHERE id=?1", [trade_id], |r| r.get(0),
+        "SELECT total_quantity FROM trades WHERE id=?1",
+        [trade_id],
+        |r| r.get(0),
     )?;
     let total_qty = dec(&total_qty_s)?;
 
@@ -465,8 +571,11 @@ pub fn partial_close(
         "INSERT INTO trade_legs (trade_id, kind, price, quantity, executed_at, cost_per_unit)
          VALUES (?1, 'exit', ?2, ?3, ?4, ?5)",
         params![
-            trade_id, exit_price.to_string(), exit_qty.to_string(),
-            executed_at, cost_per_unit.to_string()
+            trade_id,
+            exit_price.to_string(),
+            exit_qty.to_string(),
+            executed_at,
+            cost_per_unit.to_string()
         ],
     )?;
 
@@ -475,13 +584,26 @@ pub fn partial_close(
     let now = chrono::Utc::now().to_rfc3339();
 
     // If manual_pnl provided, accumulate it
-    let existing_pnl_s: Option<String> = tx.query_row(
-        "SELECT manual_pnl FROM trades WHERE id=?1", [trade_id], |r| r.get(0),
-    ).ok();
-    let existing_pnl = existing_pnl_s.as_deref().and_then(|s| dec(s).ok()).unwrap_or_default();
+    let existing_pnl_s: Option<String> = tx
+        .query_row(
+            "SELECT manual_pnl FROM trades WHERE id=?1",
+            [trade_id],
+            |r| r.get(0),
+        )
+        .ok();
+    let existing_pnl = existing_pnl_s
+        .as_deref()
+        .and_then(|s| dec(s).ok())
+        .unwrap_or_default();
     let new_pnl = match manual_pnl {
         Some(p) => Some(existing_pnl + p),
-        None => if existing_pnl.is_zero() { None } else { Some(existing_pnl) },
+        None => {
+            if existing_pnl.is_zero() {
+                None
+            } else {
+                Some(existing_pnl)
+            }
+        }
     };
 
     tx.execute(
@@ -489,7 +611,8 @@ pub fn partial_close(
         params![
             new_qty.to_string(),
             new_pnl.map(|p| p.to_string()),
-            now, trade_id
+            now,
+            trade_id
         ],
     )?;
 
@@ -499,30 +622,46 @@ pub fn partial_close(
 
 /// Log a stop-loss move.
 pub fn log_sl_move(
-    conn: &Connection, trade_id: i64,
-    old_stop: Decimal, new_stop: Decimal, reason: Option<&str>,
+    conn: &Connection,
+    trade_id: i64,
+    old_stop: Decimal,
+    new_stop: Decimal,
+    reason: Option<&str>,
 ) -> Result<(), DbError> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "INSERT INTO trade_sl_history (trade_id, old_stop, new_stop, reason, changed_at)
          VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![trade_id, old_stop.to_string(), new_stop.to_string(), reason, now],
+        params![
+            trade_id,
+            old_stop.to_string(),
+            new_stop.to_string(),
+            reason,
+            now
+        ],
     )?;
     Ok(())
 }
 
-pub fn list_sl_history(conn: &Connection, trade_id: i64) -> Result<Vec<(String, String, Option<String>, String)>, DbError> {
+pub fn list_sl_history(
+    conn: &Connection,
+    trade_id: i64,
+) -> Result<Vec<(String, String, Option<String>, String)>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT old_stop, new_stop, reason, changed_at FROM trade_sl_history
-         WHERE trade_id=?1 ORDER BY changed_at DESC"
+         WHERE trade_id=?1 ORDER BY changed_at DESC",
     )?;
-    let rows = stmt.query_map([trade_id], |r| Ok((
-        r.get::<_, String>(0)?,
-        r.get::<_, String>(1)?,
-        r.get::<_, Option<String>>(2)?,
-        r.get::<_, String>(3)?,
-    )))?;
+    let rows = stmt.query_map([trade_id], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, Option<String>>(2)?,
+            r.get::<_, String>(3)?,
+        ))
+    })?;
     let mut out = Vec::new();
-    for row in rows { out.push(row?); }
+    for row in rows {
+        out.push(row?);
+    }
     Ok(out)
 }

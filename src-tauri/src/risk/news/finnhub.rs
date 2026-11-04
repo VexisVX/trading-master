@@ -6,9 +6,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum FinnhubError {
-    #[error("missing Finnhub key")] MissingKey,
-    #[error("network: {0}")] Network(String),
-    #[error("parse: {0}")] Parse(String),
+    #[error("missing Finnhub key")]
+    MissingKey,
+    #[error("network: {0}")]
+    Network(String),
+    #[error("parse: {0}")]
+    Parse(String),
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -57,23 +60,34 @@ pub async fn fetch_general(api_key: &str) -> Result<Vec<FinnhubArticle>, Finnhub
         .build()
         .map_err(|e| FinnhubError::Network(e.to_string()))?;
 
-    let resp = client.get(&url).send().await.map_err(|e| FinnhubError::Network(e.to_string()))?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| FinnhubError::Network(e.to_string()))?;
 
     if !resp.status().is_success() {
         return Err(FinnhubError::Network(format!("HTTP {}", resp.status())));
     }
 
-    let raw: Vec<FinnhubRaw> = resp.json().await.map_err(|e| FinnhubError::Parse(e.to_string()))?;
+    let raw: Vec<FinnhubRaw> = resp
+        .json()
+        .await
+        .map_err(|e| FinnhubError::Parse(e.to_string()))?;
 
-    Ok(raw.into_iter().enumerate().map(|(i, a)| FinnhubArticle {
-        id: a.id.unwrap_or(i as i64),
-        category: a.category,
-        datetime: a.datetime,
-        headline: a.headline,
-        image: a.image,
-        related: a.related,
-        source: a.source,
-        summary: a.summary,
-        url: a.url,
-    }).collect())
+    Ok(raw
+        .into_iter()
+        .enumerate()
+        .map(|(i, a)| FinnhubArticle {
+            id: a.id.unwrap_or(i as i64),
+            category: a.category,
+            datetime: a.datetime,
+            headline: a.headline,
+            image: a.image,
+            related: a.related,
+            source: a.source,
+            summary: a.summary,
+            url: a.url,
+        })
+        .collect())
 }

@@ -36,7 +36,9 @@ struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
         let mut x = self.0;
-        if x == 0 { x = 0x9E3779B97F4A7C15; } // avoid zero-state lockup
+        if x == 0 {
+            x = 0x9E3779B97F4A7C15;
+        } // avoid zero-state lockup
         x ^= x << 13;
         x ^= x >> 7;
         x ^= x << 17;
@@ -64,7 +66,11 @@ pub fn run(cfg: &SimConfig, adaptive: bool) -> SimResult {
 
     for _ in 0..cfg.trades {
         let r_base = equity * cfg.r_base_pct;
-        let buffer_r = if r_base.is_zero() { Decimal::ZERO } else { equity / r_base };
+        let buffer_r = if r_base.is_zero() {
+            Decimal::ZERO
+        } else {
+            equity / r_base
+        };
         let mut m_preserve = Decimal::ONE;
 
         if adaptive {
@@ -90,24 +96,43 @@ pub fn run(cfg: &SimConfig, adaptive: bool) -> SimResult {
             };
         }
 
-        let r_used = if adaptive { r_base * m_preserve } else { equity * cfg.fixed_r_pct };
-        if r_used <= Decimal::ZERO { rejected += 1; continue; }
+        let r_used = if adaptive {
+            r_base * m_preserve
+        } else {
+            equity * cfg.fixed_r_pct
+        };
+        if r_used <= Decimal::ZERO {
+            rejected += 1;
+            continue;
+        }
 
         let is_win = rng.next_dec() < cfg.win_rate;
         let pnl = if is_win { r_used * cfg.rr } else { -r_used };
 
-        if is_win { wins += 1; } else { losses += 1; }
+        if is_win {
+            wins += 1;
+        } else {
+            losses += 1;
+        }
         sum_r += if is_win { cfg.rr } else { -Decimal::ONE };
 
         equity += pnl;
-        if equity > peak { peak = equity; }
+        if equity > peak {
+            peak = equity;
+        }
         if peak > Decimal::ZERO {
             let dd = (peak - equity) / peak;
-            if dd > max_dd { max_dd = dd; }
+            if dd > max_dd {
+                max_dd = dd;
+            }
         }
     }
 
-    let avg_r = if cfg.trades == 0 { Decimal::ZERO } else { sum_r / Decimal::from(cfg.trades) };
+    let avg_r = if cfg.trades == 0 {
+        Decimal::ZERO
+    } else {
+        sum_r / Decimal::from(cfg.trades)
+    };
 
     SimResult {
         strategy: if adaptive { "adaptive" } else { "fixed" },
@@ -203,15 +228,21 @@ mod tests {
     fn buffer_pauses_at_threshold() {
         use crate::equity::buffer;
         let b = buffer::compute(&buffer::BufferInput {
-            equity: dec!(10000), f_internal: dec!(9800),
-            r_open: dec!(0), execution_buffer: dec!(0), r_base: dec!(100),
+            equity: dec!(10000),
+            f_internal: dec!(9800),
+            r_open: dec!(0),
+            execution_buffer: dec!(0),
+            r_base: dec!(100),
         });
         assert_eq!(b.buffer_r, dec!(2));
         assert!(b.pause);
 
         let b2 = buffer::compute(&buffer::BufferInput {
-            equity: dec!(10050), f_internal: dec!(9800),
-            r_open: dec!(0), execution_buffer: dec!(0), r_base: dec!(100),
+            equity: dec!(10050),
+            f_internal: dec!(9800),
+            r_open: dec!(0),
+            execution_buffer: dec!(0),
+            r_base: dec!(100),
         });
         assert_eq!(b2.buffer_r, dec!(2.5));
         assert!(!b2.pause);

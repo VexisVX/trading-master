@@ -80,11 +80,15 @@ mod tests {
 
     fn flow(id: i64, ub: Decimal, ua: Decimal) -> CashFlowRow {
         CashFlowRow {
-            id, account_id: 1, kind: CashFlowKind::Deposit,
-            amount: dec!(100), currency: "USD".into(),
+            id,
+            account_id: 1,
+            kind: CashFlowKind::Deposit,
+            amount: dec!(100),
+            currency: "USD".into(),
             occurred_at: "2026-01-01".into(),
             nav_before: Decimal::ONE,
-            units_before: ub, units_after: ua,
+            units_before: ub,
+            units_after: ua,
             note: None,
         }
     }

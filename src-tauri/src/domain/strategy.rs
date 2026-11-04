@@ -25,7 +25,7 @@ pub struct StrategyField {
 /// A timeframe block within a strategy.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StrategyTimeframe {
-    pub timeframe: String,   // "4H", "1H", "15M", ...
+    pub timeframe: String, // "4H", "1H", "15M", ...
     pub fields: Vec<StrategyField>,
 }
 

@@ -17,17 +17,17 @@ impl DdType {
     pub fn as_str(self) -> &'static str {
         match self {
             DdType::StaticBalance => "static_balance",
-            DdType::StaticEquity  => "static_equity",
+            DdType::StaticEquity => "static_equity",
             DdType::TrailingBalance => "trailing_balance",
-            DdType::TrailingEquity  => "trailing_equity",
+            DdType::TrailingEquity => "trailing_equity",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
         Some(match s {
-            "static_balance"   => DdType::StaticBalance,
-            "static_equity"    => DdType::StaticEquity,
+            "static_balance" => DdType::StaticBalance,
+            "static_equity" => DdType::StaticEquity,
             "trailing_balance" => DdType::TrailingBalance,
-            "trailing_equity"  => DdType::TrailingEquity,
+            "trailing_equity" => DdType::TrailingEquity,
             _ => return None,
         })
     }
@@ -58,17 +58,25 @@ pub struct PropResult {
 
 pub fn evaluate(rules: &PropRuleSet, ctx: &PropContext) -> PropResult {
     if !rules.enabled || rules.dd_amount <= Decimal::ZERO {
-        return PropResult { f_prop: Decimal::ZERO, breached: false, reference: Decimal::ZERO };
+        return PropResult {
+            f_prop: Decimal::ZERO,
+            breached: false,
+            reference: Decimal::ZERO,
+        };
     }
     let reference = match rules.dd_type {
-        DdType::StaticBalance   => ctx.current_balance,
-        DdType::StaticEquity    => ctx.initial_balance,
+        DdType::StaticBalance => ctx.current_balance,
+        DdType::StaticEquity => ctx.initial_balance,
         DdType::TrailingBalance => ctx.peak_balance,
-        DdType::TrailingEquity  => ctx.peak_equity,
+        DdType::TrailingEquity => ctx.peak_equity,
     };
     let f_prop = reference - rules.dd_amount;
     let breached = ctx.current_equity <= f_prop;
-    PropResult { f_prop, breached, reference }
+    PropResult {
+        f_prop,
+        breached,
+        reference,
+    }
 }
 
 #[cfg(test)]
@@ -87,7 +95,11 @@ mod tests {
     }
 
     fn rules(t: DdType, amt: Decimal) -> PropRuleSet {
-        PropRuleSet { enabled: true, dd_type: t, dd_amount: amt }
+        PropRuleSet {
+            enabled: true,
+            dd_type: t,
+            dd_amount: amt,
+        }
     }
 
     #[test]

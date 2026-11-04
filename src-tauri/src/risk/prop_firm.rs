@@ -13,26 +13,38 @@
 //!
 //! A rule with limit == 0 is treated as disabled and always passes.
 
-use rust_decimal::Decimal;
 use crate::domain::prop_firm::{PropFirmRules, PropFirmStatus, RuleCheck};
 use crate::domain::trade::{Trade, TradeStatus};
+use rust_decimal::Decimal;
 
 fn round2(v: Decimal) -> Decimal {
     super::money::round_money(v, 2)
 }
 
 fn pct(num: Decimal, den: Decimal) -> Decimal {
-    if den.is_zero() { Decimal::ZERO } else { round2(num / den * Decimal::from(100)) }
+    if den.is_zero() {
+        Decimal::ZERO
+    } else {
+        round2(num / den * Decimal::from(100))
+    }
 }
 
 /// Realized P&L of a closed trade.
 fn trade_pnl(t: &Trade) -> Decimal {
-    if t.status != TradeStatus::Closed { return Decimal::ZERO; }
+    if t.status != TradeStatus::Closed {
+        return Decimal::ZERO;
+    }
     // Prefer the user-entered P&L when present.
-    if let Some(v) = t.manual_pnl { return v; }
+    if let Some(v) = t.manual_pnl {
+        return v;
+    }
     let mut gross = Decimal::ZERO;
     let mut cost = Decimal::ZERO;
-    for ex in t.legs.iter().filter(|l| matches!(l.kind, crate::domain::trade::LegKind::Exit)) {
+    for ex in t
+        .legs
+        .iter()
+        .filter(|l| matches!(l.kind, crate::domain::trade::LegKind::Exit))
+    {
         let diff = match t.side {
             crate::domain::trade::Side::Long => ex.price - t.entry_price,
             crate::domain::trade::Side::Short => t.entry_price - ex.price,
@@ -45,10 +57,14 @@ fn trade_pnl(t: &Trade) -> Decimal {
 
 /// Distinct UTC dates on which at least one trade was closed.
 fn trading_day_set(trades: &[Trade]) -> std::collections::BTreeSet<String> {
-    trades.iter()
+    trades
+        .iter()
         .filter_map(|t| {
-            if t.status != TradeStatus::Closed { return None; }
-            t.closed_at.as_deref()
+            if t.status != TradeStatus::Closed {
+                return None;
+            }
+            t.closed_at
+                .as_deref()
                 .and_then(|c| c.get(0..10))
                 .map(|s| s.to_string())
         })
@@ -62,11 +78,14 @@ pub fn evaluate(
     today_prefix: &str,
 ) -> PropFirmStatus {
     // --- Order closed trades chronologically, build equity series ---
-    let mut closed: Vec<&Trade> = trades.iter()
+    let mut closed: Vec<&Trade> = trades
+        .iter()
         .filter(|t| t.status == TradeStatus::Closed)
         .collect();
     closed.sort_by(|a, b| {
-        a.closed_at.as_deref().unwrap_or("")
+        a.closed_at
+            .as_deref()
+            .unwrap_or("")
             .cmp(b.closed_at.as_deref().unwrap_or(""))
     });
 
@@ -86,7 +105,9 @@ pub fn evaluate(
             day_start_equity = equity;
         }
         equity += trade_pnl(t);
-        if equity > peak { peak = equity; }
+        if equity > peak {
+            peak = equity;
+        }
         let day_loss_pct = pct(day_start_equity - equity, day_start_equity);
         if day_loss_pct > worst_daily_loss_pct {
             worst_daily_loss_pct = day_loss_pct;
@@ -123,9 +144,17 @@ pub fn evaluate(
     let profit_pct = pct(total_pnl, initial_balance);
 
     // --- Drawdown (trailing or static) ---
-    let floor = if rules.trailing_dd { peak } else { initial_balance };
+    let floor = if rules.trailing_dd {
+        peak
+    } else {
+        initial_balance
+    };
     let dd_amount = floor - equity;
-    let dd_pct = if floor.is_zero() { Decimal::ZERO } else { pct(dd_amount.max(Decimal::ZERO), floor) };
+    let dd_pct = if floor.is_zero() {
+        Decimal::ZERO
+    } else {
+        pct(dd_amount.max(Decimal::ZERO), floor)
+    };
 
     // --- Trading days ---
     let days = trading_day_set(trades);
@@ -141,8 +170,14 @@ pub fn evaluate(
         limit: rules.max_dd_pct,
         message: format!(
             "{} drawdown {}% of {} (limit {}%)",
-            if rules.trailing_dd { "Trailing" } else { "Static" },
-            round2(dd_pct), round2(floor), round2(rules.max_dd_pct),
+            if rules.trailing_dd {
+                "Trailing"
+            } else {
+                "Static"
+            },
+            round2(dd_pct),
+            round2(floor),
+            round2(rules.max_dd_pct),
         ),
     });
 
@@ -159,7 +194,11 @@ pub fn evaluate(
                 if worst_daily_loss_day.is_empty() {
                     String::new()
                 } else {
-                    format!(" · worst day {} at {}%", worst_daily_loss_day, round2(worst_daily_loss_pct))
+                    format!(
+                        " · worst day {} at {}%",
+                        worst_daily_loss_day,
+                        round2(worst_daily_loss_pct)
+                    )
                 }
             ),
         });
@@ -174,7 +213,8 @@ pub fn evaluate(
             limit: rules.max_total_loss_pct,
             message: format!(
                 "Total loss {}% of initial (limit {}%)",
-                round2(loss_pct), round2(rules.max_total_loss_pct)
+                round2(loss_pct),
+                round2(rules.max_total_loss_pct)
             ),
         });
     }
@@ -187,7 +227,8 @@ pub fn evaluate(
             limit: rules.profit_target_pct,
             message: format!(
                 "Profit {}% (target {}%)",
-                round2(profit_pct), round2(rules.profit_target_pct)
+                round2(profit_pct),
+                round2(rules.profit_target_pct)
             ),
         });
     }
@@ -230,8 +271,8 @@ pub fn evaluate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_decimal_macros::dec;
     use crate::domain::trade::*;
+    use rust_decimal_macros::dec;
 
     fn rules() -> PropFirmRules {
         PropFirmRules {
@@ -260,8 +301,22 @@ mod tests {
         t.created_at = at.into();
         t.updated_at = at.into();
         t.legs = vec![
-            TradeLeg { id: 1, kind: LegKind::Entry, price: entry, quantity: qty, executed_at: at.into(), cost_per_unit: Decimal::ZERO },
-            TradeLeg { id: 2, kind: LegKind::Exit,  price: exit,  quantity: qty, executed_at: at.into(), cost_per_unit: Decimal::ZERO },
+            TradeLeg {
+                id: 1,
+                kind: LegKind::Entry,
+                price: entry,
+                quantity: qty,
+                executed_at: at.into(),
+                cost_per_unit: Decimal::ZERO,
+            },
+            TradeLeg {
+                id: 2,
+                kind: LegKind::Exit,
+                price: exit,
+                quantity: qty,
+                executed_at: at.into(),
+                cost_per_unit: Decimal::ZERO,
+            },
         ];
         t
     }
@@ -269,23 +324,54 @@ mod tests {
     #[test]
     fn empty_account_rules_evaluated() {
         let st = evaluate(&rules(), dec!(10000), &[], "2026-10-20");
-        assert!(st.checks.iter().any(|c| c.name == "Max drawdown" && c.passed));
-        assert!(st.checks.iter().any(|c| c.name == "Profit target" && !c.passed));
-        assert!(st.checks.iter().any(|c| c.name == "Trading days" && !c.passed));
+        assert!(st
+            .checks
+            .iter()
+            .any(|c| c.name == "Max drawdown" && c.passed));
+        assert!(st
+            .checks
+            .iter()
+            .any(|c| c.name == "Profit target" && !c.passed));
+        assert!(st
+            .checks
+            .iter()
+            .any(|c| c.name == "Trading days" && !c.passed));
     }
 
     #[test]
     fn profit_target_met() {
-        let t = closed(1, dec!(1.00), dec!(2.00), dec!(1000), "2026-10-20T10:00:00Z");
+        let t = closed(
+            1,
+            dec!(1.00),
+            dec!(2.00),
+            dec!(1000),
+            "2026-10-20T10:00:00Z",
+        );
         let st = evaluate(&rules(), dec!(10000), &[t], "2026-10-20");
-        let pt = st.checks.iter().find(|c| c.name == "Profit target").unwrap();
+        let pt = st
+            .checks
+            .iter()
+            .find(|c| c.name == "Profit target")
+            .unwrap();
         assert!(pt.passed);
     }
 
     #[test]
     fn trailing_dd_uses_peak() {
-        let win = closed(1, dec!(1.00), dec!(2.00), dec!(1000), "2026-10-19T10:00:00Z");
-        let loss = closed(2, dec!(1.00), dec!(0.00), dec!(1100), "2026-10-20T10:00:00Z");
+        let win = closed(
+            1,
+            dec!(1.00),
+            dec!(2.00),
+            dec!(1000),
+            "2026-10-19T10:00:00Z",
+        );
+        let loss = closed(
+            2,
+            dec!(1.00),
+            dec!(0.00),
+            dec!(1100),
+            "2026-10-20T10:00:00Z",
+        );
         let mut r = rules();
         r.trailing_dd = true;
         let st = evaluate(&r, dec!(10000), &[win, loss], "2026-10-20");
@@ -295,7 +381,13 @@ mod tests {
 
     #[test]
     fn static_dd_uses_initial() {
-        let win = closed(1, dec!(1.00), dec!(2.00), dec!(1000), "2026-10-19T10:00:00Z");
+        let win = closed(
+            1,
+            dec!(1.00),
+            dec!(2.00),
+            dec!(1000),
+            "2026-10-19T10:00:00Z",
+        );
         let loss = closed(2, dec!(1.00), dec!(0.00), dec!(500), "2026-10-20T10:00:00Z");
         let mut r = rules();
         r.trailing_dd = false;
@@ -305,7 +397,13 @@ mod tests {
 
     #[test]
     fn daily_loss_breach() {
-        let t = closed(1, dec!(1.00), dec!(0.40), dec!(1000), "2026-10-20T10:00:00Z");
+        let t = closed(
+            1,
+            dec!(1.00),
+            dec!(0.40),
+            dec!(1000),
+            "2026-10-20T10:00:00Z",
+        );
         let st = evaluate(&rules(), dec!(10000), &[t], "2026-10-20");
         let dl = st.checks.iter().find(|c| c.name == "Daily loss").unwrap();
         assert!(!dl.passed);
@@ -313,21 +411,43 @@ mod tests {
 
     #[test]
     fn min_trading_days_counted() {
-        let t1 = closed(1, dec!(1.00), dec!(1.10), dec!(1000), "2026-10-18T10:00:00Z");
-        let t2 = closed(2, dec!(1.00), dec!(1.10), dec!(1000), "2026-10-19T10:00:00Z");
-        let t3 = closed(3, dec!(1.00), dec!(1.10), dec!(1000), "2026-10-19T15:00:00Z");
+        let t1 = closed(
+            1,
+            dec!(1.00),
+            dec!(1.10),
+            dec!(1000),
+            "2026-10-18T10:00:00Z",
+        );
+        let t2 = closed(
+            2,
+            dec!(1.00),
+            dec!(1.10),
+            dec!(1000),
+            "2026-10-19T10:00:00Z",
+        );
+        let t3 = closed(
+            3,
+            dec!(1.00),
+            dec!(1.10),
+            dec!(1000),
+            "2026-10-19T15:00:00Z",
+        );
         let st = evaluate(&rules(), dec!(10000), &[t1, t2, t3], "2026-10-20");
         assert_eq!(st.trading_days, 2);
     }
 
     #[test]
     fn manual_pnl_used_in_equity() {
-        let mut t = closed(1, dec!(1.00), dec!(1.10), dec!(1000), "2026-10-20T10:00:00Z");
+        let mut t = closed(
+            1,
+            dec!(1.00),
+            dec!(1.10),
+            dec!(1000),
+            "2026-10-20T10:00:00Z",
+        );
         // Price-derived would be +100, but manual says +500.
         t.manual_pnl = Some(dec!(500));
         let st = evaluate(&rules(), dec!(10000), &[t], "2026-10-20");
         assert_eq!(st.current_equity, dec!(10500));
     }
 }
-
-

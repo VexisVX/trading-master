@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import {
   Instrument,
   InstrumentInput,
@@ -46,6 +47,7 @@ export function InstrumentModal({ initial, onClose, onSaved }: Props) {
       : DEFAULT_INPUT
   );
   const [busy, setBusy] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!initial;
 
@@ -70,9 +72,9 @@ export function InstrumentModal({ initial, onClose, onSaved }: Props) {
     }
   }
 
-  async function del() {
+  async function doDelete() {
     if (!initial) return;
-    if (!confirm(`Delete ${initial.symbol}?`)) return;
+    setPendingDelete(false);
     setBusy(true);
     setErr(null);
     try {
@@ -220,7 +222,7 @@ export function InstrumentModal({ initial, onClose, onSaved }: Props) {
 
         <div className="ee-modal__footer">
           {isEdit && (
-            <button className="ee-btn ee-btn--danger" onClick={del} disabled={busy}>
+            <button className="ee-btn ee-btn--danger" onClick={() => setPendingDelete(true)} disabled={busy}>
               Delete
             </button>
           )}
@@ -233,7 +235,19 @@ export function InstrumentModal({ initial, onClose, onSaved }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    
+        {pendingDelete && (
+          <ConfirmDialog
+            title="Delete instrument?"
+            body={`This will permanently remove ${initial?.symbol}. Open trades on this symbol will fail to size until you re-add it.`}
+            confirmLabel="Delete"
+            cancelLabel="Cancel"
+            tone="danger"
+            onConfirm={doDelete}
+            onCancel={() => setPendingDelete(false)}
+          />
+        )}
+</div>
   );
 }
 

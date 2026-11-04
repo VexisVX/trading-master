@@ -171,7 +171,9 @@ pub fn backtest_trade_create(
 
     let conn = state.backtest_db.lock().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
-    let opened = opened_at.filter(|s| !s.is_empty()).unwrap_or_else(|| now.clone());
+    let opened = opened_at
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| now.clone());
     // In manual R mode, blank entry/stop → stored as "0" (schema stays NOT NULL).
     let entry_val: String = if is_manual && entry_price.trim().is_empty() {
         "0".to_string()
@@ -193,7 +195,10 @@ pub fn backtest_trade_create(
         exit_price: exit_price.as_deref().filter(|s| !s.is_empty()),
         outcome: outcome.as_deref(),
         r_multiple: r_multiple.as_deref(),
-        setup_tag: setup_tag.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()),
+        setup_tag: setup_tag
+            .as_deref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty()),
         opened_at: &opened,
         closed_at: closed_at.as_deref().filter(|s| !s.is_empty()),
         notes: notes.as_deref().filter(|s| !s.is_empty()),
@@ -214,12 +219,13 @@ pub fn backtest_reset(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn backtest_setup_tags(
-    state: State<'_, AppState>,
-) -> Result<Vec<SetupTagCount>, String> {
+pub fn backtest_setup_tags(state: State<'_, AppState>) -> Result<Vec<SetupTagCount>, String> {
     let conn = state.backtest_db.lock().map_err(|e| e.to_string())?;
     let rows = repo::list_setup_tags(&conn).map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().map(|(tag, count)| SetupTagCount { tag, count }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|(tag, count)| SetupTagCount { tag, count })
+        .collect())
 }
 
 #[tauri::command]
@@ -293,8 +299,12 @@ pub fn backtest_stats(
     let mut gross_loss = Decimal::ZERO;
 
     for t in &trades {
-        let Some(r_str) = t.r_multiple.as_deref() else { continue };
-        let Ok(r) = Decimal::from_str(r_str) else { continue };
+        let Some(r_str) = t.r_multiple.as_deref() else {
+            continue;
+        };
+        let Ok(r) = Decimal::from_str(r_str) else {
+            continue;
+        };
         rs.push(r);
         if r > Decimal::ZERO {
             wins += 1;
@@ -344,28 +354,44 @@ pub fn backtest_stats(
 
     // Histogram (integer R buckets, -5..=+5 and beyond collapse)
     let buckets: &[(&str, i64)] = &[
-        ("≤-3", i64::MIN), ("-2", -2), ("-1", -1),
-        ("0", 0), ("+1", 1), ("+2", 2), ("+3", 3), ("≥+4", i64::MAX),
+        ("≤-3", i64::MIN),
+        ("-2", -2),
+        ("-1", -1),
+        ("0", 0),
+        ("+1", 1),
+        ("+2", 2),
+        ("+3", 3),
+        ("≥+4", i64::MAX),
     ];
     let mut histogram = Vec::new();
     for (label, bound) in buckets {
-        let c = rs.iter().filter(|r| {
-            let n = r.round().to_i64().unwrap_or(0);
-            match *label {
-                "≤-3" => n <= -3,
-                "≥+4" => n >= 4,
-                _ => n == *bound,
-            }
-        }).count() as i64;
-        histogram.push(HistBucket { label: (*label).to_string(), count: c });
+        let c = rs
+            .iter()
+            .filter(|r| {
+                let n = r.round().to_i64().unwrap_or(0);
+                match *label {
+                    "≤-3" => n <= -3,
+                    "≥+4" => n >= 4,
+                    _ => n == *bound,
+                }
+            })
+            .count() as i64;
+        histogram.push(HistBucket {
+            label: (*label).to_string(),
+            count: c,
+        });
     }
 
     // By setup (only tags with >= 5 trades)
     use std::collections::HashMap;
     let mut by_tag: HashMap<String, Vec<Decimal>> = HashMap::new();
     for t in &trades {
-        let Some(tag) = t.setup_tag.as_deref().filter(|s| !s.is_empty()) else { continue };
-        let Some(r_str) = t.r_multiple.as_deref() else { continue };
+        let Some(tag) = t.setup_tag.as_deref().filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        let Some(r_str) = t.r_multiple.as_deref() else {
+            continue;
+        };
         if let Ok(r) = Decimal::from_str(r_str) {
             by_tag.entry(tag.to_string()).or_default().push(r);
         }

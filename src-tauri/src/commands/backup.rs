@@ -28,8 +28,7 @@ pub fn backup_to_file(
 ) -> Result<BackupResult, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let db = live_db_path(&app)?;
-    let info = repo::create_backup(&conn, &db, &PathBuf::from(&dest))
-        .map_err(|e| e.to_string())?;
+    let info = repo::create_backup(&conn, &db, &PathBuf::from(&dest)).map_err(|e| e.to_string())?;
     Ok(BackupResult {
         path: info.path,
         size_bytes: info.size_bytes,
@@ -45,13 +44,9 @@ pub fn backup_validate(candidate: String) -> Result<(), String> {
 /// Restores from a candidate file. The live connection stays open until the
 /// caller restarts the app — this command only swaps the file on disk.
 #[tauri::command]
-pub fn backup_restore(
-    app: tauri::AppHandle,
-    candidate: String,
-) -> Result<String, String> {
+pub fn backup_restore(app: tauri::AppHandle, candidate: String) -> Result<String, String> {
     let db = live_db_path(&app)?;
-    let old = repo::restore_from(&db, &PathBuf::from(&candidate))
-        .map_err(|e| e.to_string())?;
+    let old = repo::restore_from(&db, &PathBuf::from(&candidate)).map_err(|e| e.to_string())?;
 
     // On success, remove the .old file. If the app fails to start, the user
     // still has `.old` on disk as a recovery option.
@@ -72,17 +67,13 @@ pub fn backup_dir(app: tauri::AppHandle) -> Result<String, String> {
 /// Quick backup into the app's backups/ folder. Used by the "Backup now"
 /// button — the user doesn't have to pick a path.
 #[tauri::command]
-pub fn backup_now(
-    app: tauri::AppHandle,
-    state: State<AppState>,
-) -> Result<BackupResult, String> {
+pub fn backup_now(app: tauri::AppHandle, state: State<AppState>) -> Result<BackupResult, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let db = live_db_path(&app)?;
     let dir = repo::backups_dir(&db);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let name = format!("manual_{}.db", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
-    let info = repo::create_backup(&conn, &db, &dir.join(name))
-        .map_err(|e| e.to_string())?;
+    let info = repo::create_backup(&conn, &db, &dir.join(name)).map_err(|e| e.to_string())?;
     Ok(BackupResult {
         path: info.path,
         size_bytes: info.size_bytes,

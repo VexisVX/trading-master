@@ -1,9 +1,7 @@
 //! Tauri commands for the risk engine.
 //! All Decimal values cross the boundary as strings (serde-with-str).
 
-use crate::risk::{
-    compute_position_size, compute_r, PositionSizeInput, TradeR,
-};
+use crate::risk::{compute_position_size, compute_r, PositionSizeInput, TradeR};
 use rust_decimal::Decimal;
 
 #[tauri::command]

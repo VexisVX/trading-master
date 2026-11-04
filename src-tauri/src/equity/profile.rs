@@ -61,25 +61,41 @@ pub fn derive(i: &ProfileInput) -> Result<ProfileResult, String> {
         }),
         AccountType::PropFirm => {
             if i.profit_target_pct <= Decimal::ZERO {
-                return Err(format!("profit_target_pct must be > 0 (got {})", i.profit_target_pct));
+                return Err(format!(
+                    "profit_target_pct must be > 0 (got {})",
+                    i.profit_target_pct
+                ));
             }
             if i.max_dd_pct <= Decimal::ZERO {
                 return Err(format!("max_dd_pct must be > 0 (got {})", i.max_dd_pct));
             }
             if i.profit_target_pct > Decimal::new(50, 2) {
-                return Err(format!("profit_target_pct > 0.50 unrealistic (got {})", i.profit_target_pct));
+                return Err(format!(
+                    "profit_target_pct > 0.50 unrealistic (got {})",
+                    i.profit_target_pct
+                ));
             }
             if i.max_dd_pct > Decimal::new(20, 2) {
-                return Err(format!("max_dd_pct > 0.20 unrealistic (got {})", i.max_dd_pct));
+                return Err(format!(
+                    "max_dd_pct > 0.20 unrealistic (got {})",
+                    i.max_dd_pct
+                ));
             }
             if i.max_dd_pct >= i.profit_target_pct {
-                return Err(format!("max_dd ({}) must be < target ({})", i.max_dd_pct, i.profit_target_pct));
+                return Err(format!(
+                    "max_dd ({}) must be < target ({})",
+                    i.max_dd_pct, i.profit_target_pct
+                ));
             }
 
             let activation = i.profit_target_pct * Decimal::new(20, 2);
             let full = i.profit_target_pct * Decimal::new(60, 2);
             let retention_raw = i.max_dd_pct * Decimal::from(8);
-            let retention = if retention_raw > Decimal::new(60, 2) { Decimal::new(60, 2) } else { retention_raw };
+            let retention = if retention_raw > Decimal::new(60, 2) {
+                Decimal::new(60, 2)
+            } else {
+                retention_raw
+            };
             let trailing = i.max_dd_pct * Decimal::new(60, 2);
 
             if activation >= full {
@@ -103,14 +119,24 @@ mod tests {
 
     #[test]
     fn personal_defaults() {
-        let r = derive(&ProfileInput { account_type: AccountType::Personal, profit_target_pct: dec!(0.08), max_dd_pct: dec!(0.05) }).unwrap();
+        let r = derive(&ProfileInput {
+            account_type: AccountType::Personal,
+            profit_target_pct: dec!(0.08),
+            max_dd_pct: dec!(0.05),
+        })
+        .unwrap();
         assert_eq!(r.profit_protect_activation, dec!(0.05));
         assert_eq!(r.max_profit_retention, dec!(0.40));
     }
 
     #[test]
     fn prop_10_target_5_dd() {
-        let r = derive(&ProfileInput { account_type: AccountType::PropFirm, profit_target_pct: dec!(0.10), max_dd_pct: dec!(0.05) }).unwrap();
+        let r = derive(&ProfileInput {
+            account_type: AccountType::PropFirm,
+            profit_target_pct: dec!(0.10),
+            max_dd_pct: dec!(0.05),
+        })
+        .unwrap();
         assert_eq!(r.profit_protect_activation, dec!(0.02));
         assert_eq!(r.profit_protect_full, dec!(0.06));
         assert_eq!(r.max_profit_retention, dec!(0.40));
@@ -119,14 +145,24 @@ mod tests {
 
     #[test]
     fn prop_8_target_4_dd() {
-        let r = derive(&ProfileInput { account_type: AccountType::PropFirm, profit_target_pct: dec!(0.08), max_dd_pct: dec!(0.04) }).unwrap();
+        let r = derive(&ProfileInput {
+            account_type: AccountType::PropFirm,
+            profit_target_pct: dec!(0.08),
+            max_dd_pct: dec!(0.04),
+        })
+        .unwrap();
         assert_eq!(r.profit_protect_activation, dec!(0.016));
         assert_eq!(r.max_profit_retention, dec!(0.32));
     }
 
     #[test]
     fn retention_capped() {
-        let r = derive(&ProfileInput { account_type: AccountType::PropFirm, profit_target_pct: dec!(0.20), max_dd_pct: dec!(0.10) }).unwrap();
+        let r = derive(&ProfileInput {
+            account_type: AccountType::PropFirm,
+            profit_target_pct: dec!(0.20),
+            max_dd_pct: dec!(0.10),
+        })
+        .unwrap();
         assert_eq!(r.max_profit_retention, dec!(0.60));
     }
 
@@ -140,26 +176,51 @@ mod tests {
 
     #[test]
     fn zero_target() {
-        assert!(derive(&ProfileInput { account_type: AccountType::PropFirm, profit_target_pct: dec!(0), max_dd_pct: dec!(0.05) }).is_err());
+        assert!(derive(&ProfileInput {
+            account_type: AccountType::PropFirm,
+            profit_target_pct: dec!(0),
+            max_dd_pct: dec!(0.05)
+        })
+        .is_err());
     }
 
     #[test]
     fn zero_dd() {
-        assert!(derive(&ProfileInput { account_type: AccountType::PropFirm, profit_target_pct: dec!(0.10), max_dd_pct: dec!(0) }).is_err());
+        assert!(derive(&ProfileInput {
+            account_type: AccountType::PropFirm,
+            profit_target_pct: dec!(0.10),
+            max_dd_pct: dec!(0)
+        })
+        .is_err());
     }
 
     #[test]
     fn negative_input() {
-        assert!(derive(&ProfileInput { account_type: AccountType::PropFirm, profit_target_pct: dec!(-0.10), max_dd_pct: dec!(0.05) }).is_err());
+        assert!(derive(&ProfileInput {
+            account_type: AccountType::PropFirm,
+            profit_target_pct: dec!(-0.10),
+            max_dd_pct: dec!(0.05)
+        })
+        .is_err());
     }
 
     #[test]
     fn out_of_range() {
-        assert!(derive(&ProfileInput { account_type: AccountType::PropFirm, profit_target_pct: dec!(0.60), max_dd_pct: dec!(0.05) }).is_err());
+        assert!(derive(&ProfileInput {
+            account_type: AccountType::PropFirm,
+            profit_target_pct: dec!(0.60),
+            max_dd_pct: dec!(0.05)
+        })
+        .is_err());
     }
 
     #[test]
     fn dd_must_be_less_than_target() {
-        assert!(derive(&ProfileInput { account_type: AccountType::PropFirm, profit_target_pct: dec!(0.05), max_dd_pct: dec!(0.10) }).is_err());
+        assert!(derive(&ProfileInput {
+            account_type: AccountType::PropFirm,
+            profit_target_pct: dec!(0.05),
+            max_dd_pct: dec!(0.10)
+        })
+        .is_err());
     }
 }

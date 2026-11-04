@@ -18,7 +18,7 @@ pub struct CalendarEvent {
     pub country: String,
     pub currency: String,
     pub date: String,
-    pub impact: String,     // "High" | "Medium" | "Low" | "Holiday"
+    pub impact: String, // "High" | "Medium" | "Low" | "Holiday"
     pub forecast: String,
     pub previous: String,
 }
@@ -46,21 +46,31 @@ pub async fn fetch_calendar() -> Result<Vec<CalendarEvent>, CalendarError> {
         .build()
         .map_err(|e| CalendarError::Network(e.to_string()))?;
 
-    let resp = client.get(url).send().await.map_err(|e| CalendarError::Network(e.to_string()))?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| CalendarError::Network(e.to_string()))?;
 
     if !resp.status().is_success() {
         return Err(CalendarError::Network(format!("HTTP {}", resp.status())));
     }
 
-    let events: Vec<FFEvent> = resp.json().await.map_err(|e| CalendarError::Parse(e.to_string()))?;
+    let events: Vec<FFEvent> = resp
+        .json()
+        .await
+        .map_err(|e| CalendarError::Parse(e.to_string()))?;
 
-    Ok(events.into_iter().map(|e| CalendarEvent {
-        title: e.title,
-        country: e.country,
-        currency: e.currency,
-        date: e.date,
-        impact: e.impact,
-        forecast: e.forecast,
-        previous: e.previous,
-    }).collect())
+    Ok(events
+        .into_iter()
+        .map(|e| CalendarEvent {
+            title: e.title,
+            country: e.country,
+            currency: e.currency,
+            date: e.date,
+            impact: e.impact,
+            forecast: e.forecast,
+            previous: e.previous,
+        })
+        .collect())
 }

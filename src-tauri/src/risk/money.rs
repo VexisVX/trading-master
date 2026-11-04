@@ -40,8 +40,7 @@ pub fn parse_decimal(s: &str) -> Result<Decimal, MoneyError> {
     if trimmed.is_empty() {
         return Err(MoneyError::InvalidDecimal(s.to_string()));
     }
-    Decimal::from_str_exact(trimmed)
-        .map_err(|_| MoneyError::InvalidDecimal(s.to_string()))
+    Decimal::from_str_exact(trimmed).map_err(|_| MoneyError::InvalidDecimal(s.to_string()))
 }
 
 /// Safely divide, returning error on zero denominator.
@@ -67,8 +66,14 @@ mod tests {
     #[test]
     fn round_stat_midpoint_even() {
         // 2.5 at 0dp -> 2 (even), 3.5 -> 4
-        assert_eq!(round_stat(parse_decimal("2.5").unwrap(), 0), Decimal::from(2));
-        assert_eq!(round_stat(parse_decimal("3.5").unwrap(), 0), Decimal::from(4));
+        assert_eq!(
+            round_stat(parse_decimal("2.5").unwrap(), 0),
+            Decimal::from(2)
+        );
+        assert_eq!(
+            round_stat(parse_decimal("3.5").unwrap(), 0),
+            Decimal::from(4)
+        );
     }
 
     #[test]
@@ -79,6 +84,9 @@ mod tests {
 
     #[test]
     fn safe_div_zero() {
-        assert_eq!(safe_div(Decimal::ONE, Decimal::ZERO), Err(MoneyError::DivByZero));
+        assert_eq!(
+            safe_div(Decimal::ONE, Decimal::ZERO),
+            Err(MoneyError::DivByZero)
+        );
     }
 }

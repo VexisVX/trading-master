@@ -87,9 +87,15 @@ mod tests {
     #[test]
     fn utc_midnight() {
         let now = Utc.with_ymd_and_hms(2026, 3, 15, 14, 0, 0).unwrap();
-        let b = ResetBoundary { tz_name: "UTC".into(), reset_time: "00:00".into() };
+        let b = ResetBoundary {
+            tz_name: "UTC".into(),
+            reset_time: "00:00".into(),
+        };
         let boundary = last_boundary(&b, now);
-        assert_eq!(boundary, Utc.with_ymd_and_hms(2026, 3, 15, 0, 0, 0).unwrap());
+        assert_eq!(
+            boundary,
+            Utc.with_ymd_and_hms(2026, 3, 15, 0, 0, 0).unwrap()
+        );
     }
 
     #[test]
@@ -97,9 +103,15 @@ mod tests {
         // At 23:30 UTC on Mar 15 (London = UTC during winter, BST during summer)
         // Let's pick winter: Jan 15 2026 — London = UTC
         let now = Utc.with_ymd_and_hms(2026, 1, 15, 23, 30, 0).unwrap();
-        let b = ResetBoundary { tz_name: "Europe/London".into(), reset_time: "00:00".into() };
+        let b = ResetBoundary {
+            tz_name: "Europe/London".into(),
+            reset_time: "00:00".into(),
+        };
         let boundary = last_boundary(&b, now);
-        assert_eq!(boundary, Utc.with_ymd_and_hms(2026, 1, 15, 0, 0, 0).unwrap());
+        assert_eq!(
+            boundary,
+            Utc.with_ymd_and_hms(2026, 1, 15, 0, 0, 0).unwrap()
+        );
     }
 
     #[test]
@@ -107,26 +119,44 @@ mod tests {
         // At 02:00 UTC on Jan 16, New York (UTC-5) = Jan 15 21:00
         // So boundary should be Jan 15 05:00 UTC (midnight NY)
         let now = Utc.with_ymd_and_hms(2026, 1, 16, 2, 0, 0).unwrap();
-        let b = ResetBoundary { tz_name: "America/New_York".into(), reset_time: "00:00".into() };
+        let b = ResetBoundary {
+            tz_name: "America/New_York".into(),
+            reset_time: "00:00".into(),
+        };
         let boundary = last_boundary(&b, now);
         // Jan 15 00:00 NY = Jan 15 05:00 UTC
-        assert_eq!(boundary, Utc.with_ymd_and_hms(2026, 1, 15, 5, 0, 0).unwrap());
+        assert_eq!(
+            boundary,
+            Utc.with_ymd_and_hms(2026, 1, 15, 5, 0, 0).unwrap()
+        );
     }
 
     #[test]
     fn custom_reset_time() {
         // Reset at 17:00 UTC. At 18:00 UTC, boundary is today 17:00
         let now = Utc.with_ymd_and_hms(2026, 3, 15, 18, 0, 0).unwrap();
-        let b = ResetBoundary { tz_name: "UTC".into(), reset_time: "17:00".into() };
+        let b = ResetBoundary {
+            tz_name: "UTC".into(),
+            reset_time: "17:00".into(),
+        };
         let boundary = last_boundary(&b, now);
-        assert_eq!(boundary, Utc.with_ymd_and_hms(2026, 3, 15, 17, 0, 0).unwrap());
+        assert_eq!(
+            boundary,
+            Utc.with_ymd_and_hms(2026, 3, 15, 17, 0, 0).unwrap()
+        );
     }
 
     #[test]
     fn invalid_tz_falls_back_to_utc() {
         let now = Utc.with_ymd_and_hms(2026, 3, 15, 10, 0, 0).unwrap();
-        let b = ResetBoundary { tz_name: "Invalid/Zone".into(), reset_time: "00:00".into() };
+        let b = ResetBoundary {
+            tz_name: "Invalid/Zone".into(),
+            reset_time: "00:00".into(),
+        };
         let boundary = last_boundary(&b, now);
-        assert_eq!(boundary, Utc.with_ymd_and_hms(2026, 3, 15, 0, 0, 0).unwrap());
+        assert_eq!(
+            boundary,
+            Utc.with_ymd_and_hms(2026, 3, 15, 0, 0, 0).unwrap()
+        );
     }
 }

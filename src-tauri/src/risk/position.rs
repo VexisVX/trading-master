@@ -62,7 +62,9 @@ pub struct PositionSizeResult {
     pub actual_risk: Decimal,
 }
 
-pub fn compute_position_size(input: &PositionSizeInput) -> Result<PositionSizeResult, PositionError> {
+pub fn compute_position_size(
+    input: &PositionSizeInput,
+) -> Result<PositionSizeResult, PositionError> {
     if input.risk_fraction <= Decimal::ZERO {
         return Err(PositionError::NonPositiveRisk);
     }
@@ -92,10 +94,7 @@ pub fn compute_position_size(input: &PositionSizeInput) -> Result<PositionSizeRe
 
     let raw_lots = safe_div(risk_amount, loss_per_lot)?;
     // Round DOWN to 2 decimals so we never exceed risk budget.
-    let lots = raw_lots.round_dp_with_strategy(
-        2,
-        rust_decimal::RoundingStrategy::ToZero,
-    );
+    let lots = raw_lots.round_dp_with_strategy(2, rust_decimal::RoundingStrategy::ToZero);
     let actual_risk = round_money(lots * loss_per_lot, 2);
 
     Ok(PositionSizeResult {
@@ -107,7 +106,6 @@ pub fn compute_position_size(input: &PositionSizeInput) -> Result<PositionSizeRe
         actual_risk,
     })
 }
-
 
 // ============================================================
 // S7: size from R_allowed directly + instrument step/min/max
@@ -137,9 +135,7 @@ pub struct SizeFromAllowedResult {
     pub rejected_below_min: bool,
 }
 
-pub fn size_from_allowed(
-    i: &SizeFromAllowedInput,
-) -> Result<SizeFromAllowedResult, PositionError> {
+pub fn size_from_allowed(i: &SizeFromAllowedInput) -> Result<SizeFromAllowedResult, PositionError> {
     if i.r_allowed <= Decimal::ZERO {
         return Err(PositionError::NonPositiveRisk);
     }
@@ -164,7 +160,11 @@ pub fn size_from_allowed(
     }
 
     let raw = safe_div(i.r_allowed, loss_per_lot)?;
-    let step = if i.lot_step > Decimal::ZERO { i.lot_step } else { Decimal::new(1, 2) };
+    let step = if i.lot_step > Decimal::ZERO {
+        i.lot_step
+    } else {
+        Decimal::new(1, 2)
+    };
     // Round DOWN to step.
     let steps = (raw / step).round_dp_with_strategy(0, rust_decimal::RoundingStrategy::ToZero);
     let mut lots = steps * step;
@@ -202,11 +202,11 @@ mod tests {
     fn base() -> PositionSizeInput {
         PositionSizeInput {
             account_balance: dec!(10000),
-            risk_fraction: dec!(0.01),        // 1% = $100
+            risk_fraction: dec!(0.01), // 1% = $100
             entry_price: dec!(1.1000),
-            stop_price: dec!(1.0950),         // 50 pip stop
-            tick_size: dec!(0.0001),          // 1 pip = 10 ticks on 5-digit broker? No: tick = 0.00001 typically
-            tick_value: dec!(1),              // $1 per tick per 1.0 lot
+            stop_price: dec!(1.0950), // 50 pip stop
+            tick_size: dec!(0.0001), // 1 pip = 10 ticks on 5-digit broker? No: tick = 0.00001 typically
+            tick_value: dec!(1),     // $1 per tick per 1.0 lot
             contract_size: dec!(100000),
             commission_per_lot: dec!(0),
         }
@@ -250,14 +250,20 @@ mod tests {
     fn rejects_zero_stop() {
         let mut i = base();
         i.stop_price = i.entry_price;
-        assert_eq!(compute_position_size(&i), Err(PositionError::NonPositiveStop));
+        assert_eq!(
+            compute_position_size(&i),
+            Err(PositionError::NonPositiveStop)
+        );
     }
 
     #[test]
     fn rejects_zero_tick() {
         let mut i = base();
         i.tick_size = Decimal::ZERO;
-        assert_eq!(compute_position_size(&i), Err(PositionError::NonPositiveTickSize));
+        assert_eq!(
+            compute_position_size(&i),
+            Err(PositionError::NonPositiveTickSize)
+        );
     }
 
     #[test]
@@ -289,7 +295,8 @@ mod tests {
             lot_step: dec!(0.01),
             min_qty: dec!(0.01),
             max_qty: dec!(100),
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(r.lots, dec!(2.00));
         assert_eq!(r.actual_risk, dec!(100.00));
     }
@@ -308,7 +315,8 @@ mod tests {
             lot_step: dec!(0.05),
             min_qty: dec!(0),
             max_qty: dec!(0),
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(r.lots, dec!(1.65));
     }
 
@@ -325,7 +333,8 @@ mod tests {
             lot_step: dec!(0.01),
             min_qty: dec!(0.10),
             max_qty: dec!(0),
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(r.lots, dec!(0.10));
         assert!(r.clamped_to_min);
         assert!(r.rejected_below_min);
@@ -344,7 +353,8 @@ mod tests {
             lot_step: dec!(0.01),
             min_qty: dec!(0),
             max_qty: dec!(1.00),
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(r.lots, dec!(1.00));
         assert!(r.clamped_to_max);
     }
@@ -362,6 +372,7 @@ mod tests {
             lot_step: dec!(0.01),
             min_qty: dec!(0),
             max_qty: dec!(0),
-        }).is_err());
+        })
+        .is_err());
     }
 }

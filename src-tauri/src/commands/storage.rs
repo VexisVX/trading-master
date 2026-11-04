@@ -19,13 +19,13 @@ pub fn storage_stats(
 ) -> Result<StorageStats, String> {
     use tauri::Manager;
 
-    let app_dir = app.path().app_data_dir()
+    let app_dir = app
+        .path()
+        .app_data_dir()
         .map_err(|e| format!("app_data_dir: {e}"))?;
     let db_path = app_dir.join("app.db");
 
-    let db_size_bytes = std::fs::metadata(&db_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let db_size_bytes = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
 
     // Count attachments folder size
     let attach_dir = app_dir.join("attachments");

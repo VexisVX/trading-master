@@ -28,14 +28,19 @@ pub fn strategies_delete(state: State<AppState>, id: i64) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub fn strategies_update(state: State<AppState>, id: i64, strategy: NewStrategy) -> Result<(), String> {
+pub fn strategies_update(
+    state: State<AppState>,
+    id: i64,
+    strategy: NewStrategy,
+) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     repo::update_strategy(&conn, id, &strategy).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn strategies_list_versions(
-    state: State<AppState>, strategy_id: i64,
+    state: State<AppState>,
+    strategy_id: i64,
 ) -> Result<Vec<(i64, i64, String, Option<String>, String)>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     repo::list_versions(&conn, strategy_id).map_err(|e| e.to_string())
@@ -43,7 +48,8 @@ pub fn strategies_list_versions(
 
 #[tauri::command]
 pub fn strategies_get_version(
-    state: State<AppState>, version_id: i64,
+    state: State<AppState>,
+    version_id: i64,
 ) -> Result<Option<String>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     repo::get_version_json(&conn, version_id).map_err(|e| e.to_string())

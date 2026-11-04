@@ -89,6 +89,8 @@ pub struct RiskDetail {
     pub f_internal: String,
     pub f_prop: String,
     pub binding_constraint: String,
+    pub r_target: String,
+    pub r_buffer: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -152,10 +154,7 @@ pub fn equity_config_get(state: State<'_, AppState>) -> Result<EquityConfig, Str
 }
 
 #[tauri::command]
-pub fn equity_config_set(
-    state: State<'_, AppState>,
-    config: EquityConfig,
-) -> Result<(), String> {
+pub fn equity_config_set(state: State<'_, AppState>, config: EquityConfig) -> Result<(), String> {
     config.validate()?;
     let json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -212,7 +211,9 @@ pub fn equity_snapshot_create(
         consecutive_losses: input.consecutive_losses,
         taken_at: taken_at.clone(),
     };
-    let parsed = snap_domain.parse().map_err(|e: String| format!("snapshot parse: {e}"))?;
+    let parsed = snap_domain
+        .parse()
+        .map_err(|e: String| format!("snapshot parse: {e}"))?;
     let acct_state = AccountState::from_snapshot_with_profile(parsed, &cfg, None)
         .map_err(|e| format!("AccountState: {e}"))?;
 
@@ -265,7 +266,8 @@ pub fn equity_evaluate(
     // 1. Load config + latest snapshot
     let cfg = load_or_default_config(&state)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let snap_row = repo::latest_snapshot(&conn, account_id).map_err(|e| e.to_string())?
+    let snap_row = repo::latest_snapshot(&conn, account_id)
+        .map_err(|e| e.to_string())?
         .ok_or_else(|| "no snapshot yet — create one first".to_string())?;
 
     let snap_domain = EquitySnapshot {
@@ -334,7 +336,7 @@ pub fn equity_evaluate(
             entry: p.entry,
             stop: p.stop,
             take_profit: p.take_profit,
-            allow_legacy: p.allow_legacy.unwrap_or(true),
+            allow_legacy: p.allow_legacy.unwrap_or(false),
             contract_multiplier: p.contract_multiplier,
             commission_per_unit: p.commission_per_unit,
             slippage_buffer: p.slippage_buffer,
@@ -344,8 +346,9 @@ pub fn equity_evaluate(
     };
 
     // 3. Evaluate
-    let decision: TradeDecision = crate::equity::engine::evaluate_with_conn(&state_acct, &cfg, prop.as_ref(), Some(&conn))
-        .map_err(|e: EquityError| e.to_string())?;
+    let decision: TradeDecision =
+        crate::equity::engine::evaluate_with_conn(&state_acct, &cfg, prop.as_ref(), Some(&conn))
+            .map_err(|e: EquityError| e.to_string())?;
 
     // 4. Persist decision
     let cfg_json = serde_json::to_string(&cfg).map_err(|e| e.to_string())?;
@@ -364,6 +367,21 @@ pub fn equity_evaluate(
     };
     let phase_for_db = phase_str(state_acct.phase).to_string();
 
+    // PHASE 4: instrument audit
+    let (inst_sym_audit, inst_spec_audit) = match &decision.instrument_symbol {
+        Some(sym) => {
+            let spec_json = {
+                let conn2 = state.db.lock().map_err(|e| e.to_string())?;
+                crate::db::instruments::get_typed(&conn2, sym)
+                    .ok()
+                    .flatten()
+                    .and_then(|s| serde_json::to_string(&s).ok())
+            };
+            (Some(sym.as_str()), spec_json)
+        }
+        None => (None, None),
+    };
+
     let drow = repo::DecisionRow {
         snapshot_id: snap_row.id,
         allowed: decision.allowed,
@@ -378,6 +396,8 @@ pub fn equity_evaluate(
         config_json: &cfg_json,
         risk_reduced,
         phase: &phase_for_db,
+        instrument_symbol: inst_sym_audit,
+        instrument_spec_json: inst_spec_audit.as_deref(),
     };
     let _ = repo::insert_decision(&conn, &drow);
 
@@ -407,9 +427,12 @@ pub fn equity_evaluate(
                 Some(p) => {
                     let entry = parse_dec(&p.entry, "entry").unwrap_or(Decimal::ZERO);
                     let stop = parse_dec(&p.stop, "stop").unwrap_or(Decimal::ZERO);
-                    let mult = parse_dec(p.contract_multiplier.as_deref().unwrap_or("1"), "mult").unwrap_or(Decimal::ONE);
-                    let comm = parse_dec(p.commission_per_unit.as_deref().unwrap_or("0"), "comm").unwrap_or(Decimal::ZERO);
-                    let slip = parse_dec(p.slippage_buffer.as_deref().unwrap_or("0"), "slip").unwrap_or(Decimal::ZERO);
+                    let mult = parse_dec(p.contract_multiplier.as_deref().unwrap_or("1"), "mult")
+                        .unwrap_or(Decimal::ONE);
+                    let comm = parse_dec(p.commission_per_unit.as_deref().unwrap_or("0"), "comm")
+                        .unwrap_or(Decimal::ZERO);
+                    let slip = parse_dec(p.slippage_buffer.as_deref().unwrap_or("0"), "slip")
+                        .unwrap_or(Decimal::ZERO);
                     let ems = (entry - stop).abs();
                     let per_unit = ems * mult + comm + slip;
                     (ems, mult, per_unit)
@@ -435,6 +458,8 @@ pub fn equity_evaluate(
                 f_internal: state_acct.f_internal.to_string(),
                 f_prop: state_acct.f_prop.to_string(),
                 binding_constraint: r.binding.to_string(),
+                r_target: r.r_target.to_string(),
+                r_buffer: r.r_buffer.to_string(),
             }
         }),
         sizing_source: decision.sizing_source.clone(),
@@ -477,6 +502,8 @@ pub fn equity_decision_record(
         config_json: &cfg_json,
         risk_reduced: false,
         phase: "normal",
+        instrument_symbol: None,
+        instrument_spec_json: None,
     };
     repo::insert_decision(&conn, &drow).map_err(|e| e.to_string())
 }
@@ -490,6 +517,30 @@ pub fn equity_auto_snapshot_create(
     state: State<'_, AppState>,
     account_id: Option<i64>,
 ) -> Result<i64, String> {
+    // Guard: skip if last snapshot for this account is < 2 seconds old
+    if let Some(aid) = account_id {
+        if let Ok(conn0) = state.db.try_lock() {
+            let last_taken: Option<String> = conn0
+                .query_row(
+                    "SELECT taken_at FROM equity_snapshots WHERE account_id = ?1 ORDER BY id DESC LIMIT 1",
+                    [aid],
+                    |r| r.get(0),
+                )
+                .ok();
+            if let Some(ts) = last_taken {
+                if let Ok(when) = chrono::DateTime::parse_from_rfc3339(&ts) {
+                    let age_secs = chrono::Utc::now()
+                        .signed_duration_since(when.with_timezone(&chrono::Utc))
+                        .num_seconds();
+                    if age_secs < 2 {
+                        eprintln!("[AUTO_SNAPSHOT] skipped: last snapshot {}s ago", age_secs);
+                        return Ok(0);
+                    }
+                }
+            }
+        }
+    }
+
     use rust_decimal::prelude::FromStr;
     use rust_decimal::Decimal;
 
@@ -566,7 +617,10 @@ pub fn equity_auto_snapshot_create(
         Some(p) => {
             let prev_hwm = Decimal::from_str(&p.high_watermark).unwrap_or(initial);
             let prev_lwm = Decimal::from_str(&p.low_watermark).unwrap_or(initial);
-            (prev_hwm.max(equity).max(initial), prev_lwm.min(equity).min(initial))
+            (
+                prev_hwm.max(equity).max(initial),
+                prev_lwm.min(equity).min(initial),
+            )
         }
         None => (equity.max(initial), equity.min(initial)),
     };
@@ -636,8 +690,10 @@ pub fn equity_auto_snapshot_create(
     };
 
     // Load instruments
-    let mut instruments: std::collections::HashMap<String, crate::domain::instrument::InstrumentSpec> =
-        std::collections::HashMap::new();
+    let mut instruments: std::collections::HashMap<
+        String,
+        crate::domain::instrument::InstrumentSpec,
+    > = std::collections::HashMap::new();
     {
         let mut stmt = conn
             .prepare("SELECT symbol FROM instruments")
@@ -664,7 +720,7 @@ pub fn equity_auto_snapshot_create(
         let mut stmt = conn
             .prepare(
                 "SELECT amount, kind FROM account_cash_flows
-                 WHERE account_id = ?1 AND occurred_at >= ?2"
+                 WHERE account_id = ?1 AND occurred_at >= ?2",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -690,14 +746,15 @@ pub fn equity_auto_snapshot_create(
 
     let daily_result = crate::equity::daily::compute(&crate::equity::daily::DailyPnLInput {
         trades: &all_trades,
-        day_start_equity: day_start,  // from earlier in the function
+        day_start_equity: day_start, // from earlier in the function
         current_equity: equity,
         external_cash_flows,
         day_start_time,
         instruments: &instruments,
         max_price_age_minutes: cfg.max_price_age_minutes,
         now,
-        daily_loss_limit: Decimal::from_str(&cfg.daily_loss_limit).unwrap_or(Decimal::ZERO) * equity,
+        daily_loss_limit: Decimal::from_str(&cfg.daily_loss_limit).unwrap_or(Decimal::ZERO)
+            * equity,
         execution_buffer: Decimal::ZERO,
     });
 
@@ -708,7 +765,10 @@ pub fn equity_auto_snapshot_create(
             (Decimal::ZERO, Some(e.to_string()))
         }
     };
-    eprintln!("[AUTO_SNAPSHOT] daily_loss = {} (error: {:?})", daily_loss, daily_error);
+    eprintln!(
+        "[AUTO_SNAPSHOT] daily_loss = {} (error: {:?})",
+        daily_loss, daily_error
+    );
 
     // ============================================================
     // 6. Open risk
@@ -774,11 +834,13 @@ pub fn equity_auto_snapshot_create(
         taken_at: chrono::Utc::now(),
     };
     // S16-deadlock-fix: use the already-held conn (do NOT re-lock).
-    let profile_opt = crate::db::profiles::get(&conn, acc_id)
-        .map_err(|e| e.to_string())?;
+    let profile_opt = crate::db::profiles::get(&conn, acc_id).map_err(|e| e.to_string())?;
     let acct_state = crate::equity::state::AccountState::from_snapshot_with_profile(
-        parsed_for_state, &cfg, profile_opt.as_ref()
-    ).map_err(|e| format!("AccountState: {}", e))?;
+        parsed_for_state,
+        &cfg,
+        profile_opt.as_ref(),
+    )
+    .map_err(|e| format!("AccountState: {}", e))?;
 
     let protected_profit = acct_state.profit_retention;
     let f_hybrid = acct_state.f_hybrid;
@@ -966,9 +1028,7 @@ pub struct AccountInfo {
 }
 
 #[tauri::command]
-pub fn equity_list_accounts(
-    state: State<'_, AppState>,
-) -> Result<Vec<AccountInfo>, String> {
+pub fn equity_list_accounts(state: State<'_, AppState>) -> Result<Vec<AccountInfo>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
@@ -1072,58 +1132,89 @@ pub fn equity_list_snapshots(
 }
 
 #[tauri::command]
-pub fn equity_delete_snapshot(
-    state: State<'_, AppState>,
-    id: i64,
-) -> Result<(), String> {
+pub fn equity_delete_snapshot(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    // 1) decisions that reference this snapshot
-    conn.execute("DELETE FROM equity_decisions WHERE snapshot_id = ?1", [id])
-        .map_err(|e| e.to_string())?;
-    // 2) the snapshot itself
-    conn.execute("DELETE FROM equity_snapshots WHERE id = ?1", [id])
-        .map_err(|e| e.to_string())?;
-    Ok(())
+
+    // PRAGMA must be OUTSIDE transaction
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .map_err(|e| format!("PRAGMA OFF failed: {e}"))?;
+
+    let result = (|| -> Result<(), String> {
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        // 1. Delete decisions first
+        tx.execute("DELETE FROM equity_decisions WHERE snapshot_id = ?1", [id])
+            .map_err(|e| format!("delete decisions: {e}"))?;
+        // 2. Then snapshot
+        let n = tx
+            .execute("DELETE FROM equity_snapshots WHERE id = ?1", [id])
+            .map_err(|e| format!("delete snapshot: {e}"))?;
+        if n == 0 {
+            return Err(format!("snapshot {} not found", id));
+        }
+        tx.commit().map_err(|e| format!("commit: {e}"))?;
+        Ok(())
+    })();
+
+    let _ = conn.execute_batch("PRAGMA foreign_keys = ON;");
+
+    result
 }
 
 #[tauri::command]
 pub fn equity_clear_snapshots(state: State<'_, AppState>) -> Result<i64, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    // 1) all decisions
-    conn.execute("DELETE FROM equity_decisions", [])
-        .map_err(|e| e.to_string())?;
-    // 2) all snapshots
-    let n = conn
-        .execute("DELETE FROM equity_snapshots", [])
-        .map_err(|e| e.to_string())?;
-    Ok(n as i64)
+
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .map_err(|e| format!("PRAGMA OFF failed: {e}"))?;
+
+    let result = (|| -> Result<i64, String> {
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM equity_decisions", [])
+            .map_err(|e| format!("delete decisions: {e}"))?;
+        let n = tx
+            .execute("DELETE FROM equity_snapshots", [])
+            .map_err(|e| format!("delete snapshots: {e}"))?;
+        tx.commit().map_err(|e| format!("commit: {e}"))?;
+        Ok(n as i64)
+    })();
+
+    let _ = conn.execute_batch("PRAGMA foreign_keys = ON;");
+
+    result
 }
 
 /// Delete snapshots older than N days. Returns how many were deleted.
 #[tauri::command]
-pub fn equity_cleanup_old_snapshots(
-    state: State<'_, AppState>,
-    days: i64,
-) -> Result<i64, String> {
+pub fn equity_cleanup_old_snapshots(state: State<'_, AppState>, days: i64) -> Result<i64, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
-    // 1) decisions whose snapshot is older than cutoff
-    conn.execute(
-        "DELETE FROM equity_decisions
-         WHERE snapshot_id IN (
-           SELECT id FROM equity_snapshots WHERE taken_at < ?1
-         )",
-        [&cutoff],
-    )
-    .map_err(|e| e.to_string())?;
-    // 2) old snapshots
-    let n = conn
-        .execute(
-            "DELETE FROM equity_snapshots WHERE taken_at < ?1",
+
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .map_err(|e| format!("PRAGMA OFF failed: {e}"))?;
+
+    let result = (|| -> Result<i64, String> {
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM equity_decisions
+             WHERE snapshot_id IN (
+               SELECT id FROM equity_snapshots WHERE taken_at < ?1
+             )",
             [&cutoff],
         )
-        .map_err(|e| e.to_string())?;
-    Ok(n as i64)
+        .map_err(|e| format!("delete decisions: {e}"))?;
+        let n = tx
+            .execute(
+                "DELETE FROM equity_snapshots WHERE taken_at < ?1",
+                [&cutoff],
+            )
+            .map_err(|e| format!("delete snapshots: {e}"))?;
+        tx.commit().map_err(|e| format!("commit: {e}"))?;
+        Ok(n as i64)
+    })();
+
+    let _ = conn.execute_batch("PRAGMA foreign_keys = ON;");
+
+    result
 }
 
 // ============================================================
@@ -1142,7 +1233,7 @@ pub struct RiskPreview {
     pub state_enum: String,
 
     // Floors
-    pub f_profit: String,
+    pub f_profit: String, // "" if not active
     pub f_trail: String,
     pub f_internal: String,
     pub f_prop: String,
@@ -1165,7 +1256,7 @@ pub struct RiskPreview {
     pub r_allowed: String,
     pub binding_constraint: String,
 
-    // Config
+    // Config (for display)
     pub r0_pct: String,
     pub profit_activation: String,
     pub profit_full: String,
@@ -1182,6 +1273,29 @@ pub struct RiskPreview {
     pub consecutive_losses: i64,
 }
 
+// ============================================================
+// Profile DTOs (PHASE 2.2, restored)
+// ============================================================
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ProfileInputDto {
+    pub account_type: String,
+    pub profit_target_pct: String,
+    pub max_dd_pct: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ProfileOut {
+    pub account_id: i64,
+    pub account_type: String,
+    pub profit_target_pct: String,
+    pub max_dd_pct: String,
+    pub profit_protect_activation: String,
+    pub profit_protect_full: String,
+    pub max_profit_retention: String,
+    pub trailing_dd_pct: String,
+}
+
 #[tauri::command]
 pub fn equity_preview_risk(
     state: State<'_, AppState>,
@@ -1189,10 +1303,12 @@ pub fn equity_preview_risk(
 ) -> Result<RiskPreview, String> {
     use crate::equity::buffer::{self, BufferInput};
     use crate::equity::risk_engine::{self, RiskInput};
+    use rust_decimal::prelude::FromStr;
 
     let cfg = load_or_default_config(&state)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let snap_row = repo::latest_snapshot(&conn, account_id).map_err(|e| e.to_string())?
+    let snap_row = repo::latest_snapshot(&conn, account_id)
+        .map_err(|e| e.to_string())?
         .ok_or_else(|| "no snapshot yet — click Refresh".to_string())?;
     drop(conn);
 
@@ -1209,7 +1325,6 @@ pub fn equity_preview_risk(
         taken_at: snap_row.taken_at.clone(),
     };
     let parsed = snap_domain.parse().map_err(|e| format!("snapshot: {e}"))?;
-    // conn was dropped above — re-lock for profile lookup
     let profile_opt = match account_id {
         Some(aid) => {
             let conn2 = state.db.lock().map_err(|e| e.to_string())?;
@@ -1239,12 +1354,14 @@ pub fn equity_preview_risk(
     let r_portfolio_remaining = if portfolio_max.is_zero() {
         Decimal::MAX
     } else {
-        (acct_state.snapshot.equity * portfolio_max - acct_state.snapshot.open_portfolio_risk).max(Decimal::ZERO)
+        (acct_state.snapshot.equity * portfolio_max - acct_state.snapshot.open_portfolio_risk)
+            .max(Decimal::ZERO)
     };
     let r_daily_remaining = if daily_limit.is_zero() {
         Decimal::MAX
     } else {
-        (acct_state.snapshot.equity * daily_limit - acct_state.snapshot.daily_loss).max(Decimal::ZERO)
+        (acct_state.snapshot.equity * daily_limit - acct_state.snapshot.daily_loss)
+            .max(Decimal::ZERO)
     };
     let r_prop_remaining = if prop_max.is_zero() {
         Decimal::MAX
@@ -1263,14 +1380,15 @@ pub fn equity_preview_risk(
     });
 
     let rp_state = acct_state.state_enum.as_str().to_string();
-
-    // Display caps: MAX → r_target (so UI shows sensible values)
     let disp = |v: Decimal| -> String {
-        if v == Decimal::MAX { risk.r_target.to_string() } else { v.to_string() }
+        if v == Decimal::MAX {
+            risk.r_target.to_string()
+        } else {
+            v.to_string()
+        }
     };
-
     let f_profit_str = if acct_state.f_profit.is_zero() {
-        String::new() // empty = not active
+        String::new()
     } else {
         acct_state.f_profit.to_string()
     };
@@ -1321,30 +1439,6 @@ pub fn equity_preview_risk(
     })
 }
 
-
-// ============================================================
-// S15 — account profile (adaptive presets)
-// ============================================================
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct ProfileInputDto {
-    pub account_type: String,
-    pub profit_target_pct: String,
-    pub max_dd_pct: String,
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct ProfileOut {
-    pub account_id: i64,
-    pub account_type: String,
-    pub profit_target_pct: String,
-    pub max_dd_pct: String,
-    pub profit_protect_activation: String,
-    pub profit_protect_full: String,
-    pub max_profit_retention: String,
-    pub trailing_dd_pct: String,
-}
-
 #[tauri::command]
 pub fn equity_profile_get(
     state: State<'_, AppState>,
@@ -1376,8 +1470,7 @@ pub fn equity_profile_set(
     let at = AccountType::parse(&input.account_type)?;
     let target = Decimal::from_str(&input.profit_target_pct)
         .map_err(|e| format!("profit_target_pct: {e}"))?;
-    let dd = Decimal::from_str(&input.max_dd_pct)
-        .map_err(|e| format!("max_dd_pct: {e}"))?;
+    let dd = Decimal::from_str(&input.max_dd_pct).map_err(|e| format!("max_dd_pct: {e}"))?;
 
     let derived = derive(&ProfileInput {
         account_type: at,
@@ -1448,24 +1541,35 @@ pub struct InstrumentInputDto {
 }
 
 #[tauri::command]
-pub fn equity_instruments_list(
-    state: State<'_, AppState>,
-) -> Result<Vec<InstrumentOut>, String> {
+pub fn equity_instruments_list(state: State<'_, AppState>) -> Result<Vec<InstrumentOut>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT symbol, currency, tick_size, tick_value, contract_size,
+    let mut stmt = conn
+        .prepare(
+            "SELECT symbol, currency, tick_size, tick_value, contract_size,
                 min_qty, max_qty, lot_step, commission_per_lot, slippage_per_unit,
                 spec_source
          FROM instruments ORDER BY symbol",
-    ).map_err(|e| e.to_string())?;
-    let rows: Vec<InstrumentOut> = stmt.query_map([], |r| Ok(InstrumentOut {
-        symbol: r.get(0)?, currency: r.get(1)?,
-        tick_size: r.get(2)?, tick_value: r.get(3)?, contract_size: r.get(4)?,
-        min_qty: r.get(5)?, max_qty: r.get(6)?, lot_step: r.get(7)?,
-        commission_per_lot: r.get(8)?, slippage_per_unit: r.get(9)?,
-        spec_source: r.get(10)?,
-    })).map_err(|e| e.to_string())?
-      .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<InstrumentOut> = stmt
+        .query_map([], |r| {
+            Ok(InstrumentOut {
+                symbol: r.get(0)?,
+                currency: r.get(1)?,
+                tick_size: r.get(2)?,
+                tick_value: r.get(3)?,
+                contract_size: r.get(4)?,
+                min_qty: r.get(5)?,
+                max_qty: r.get(6)?,
+                lot_step: r.get(7)?,
+                commission_per_lot: r.get(8)?,
+                slippage_per_unit: r.get(9)?,
+                spec_source: r.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
     Ok(rows)
 }
 
@@ -1490,8 +1594,10 @@ pub fn equity_instrument_upsert(
     let _ = Decimal::from_str(&input.min_qty).map_err(|e| format!("min_qty: {e}"))?;
     let _ = Decimal::from_str(&input.max_qty).map_err(|e| format!("max_qty: {e}"))?;
     let _ = Decimal::from_str(&input.lot_step).map_err(|e| format!("lot_step: {e}"))?;
-    let _ = Decimal::from_str(&input.commission_per_lot).map_err(|e| format!("commission_per_lot: {e}"))?;
-    let _ = Decimal::from_str(&input.slippage_per_unit).map_err(|e| format!("slippage_per_unit: {e}"))?;
+    let _ = Decimal::from_str(&input.commission_per_lot)
+        .map_err(|e| format!("commission_per_lot: {e}"))?;
+    let _ = Decimal::from_str(&input.slippage_per_unit)
+        .map_err(|e| format!("slippage_per_unit: {e}"))?;
 
     let _ = SpecSource::parse(&input.spec_source)?;
 
@@ -1514,16 +1620,12 @@ pub fn equity_instrument_upsert(
 }
 
 #[tauri::command]
-pub fn equity_instrument_delete(
-    state: State<'_, AppState>,
-    symbol: String,
-) -> Result<(), String> {
+pub fn equity_instrument_delete(state: State<'_, AppState>, symbol: String) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM instruments WHERE symbol = ?1", [&symbol])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
-
 
 // ============================================================
 // PHASE 2.2-C: daily data quality check
@@ -1539,7 +1641,7 @@ fn check_daily_data_quality(
 
     let aid = match account_id {
         Some(a) => a,
-        None => return Ok(()),  // no account scope → skip check
+        None => return Ok(()), // no account scope → skip check
     };
 
     // Load all trades
@@ -1559,7 +1661,8 @@ fn check_daily_data_quality(
     }
 
     // Load instruments
-    let mut instruments: HashMap<String, crate::domain::instrument::InstrumentSpec> = HashMap::new();
+    let mut instruments: HashMap<String, crate::domain::instrument::InstrumentSpec> =
+        HashMap::new();
     let mut stmt2 = conn
         .prepare("SELECT symbol FROM instruments")
         .map_err(|e| crate::equity::error::DailyPnLError::ComputeError(e.to_string()))?;
@@ -1641,11 +1744,15 @@ fn cashflow_deposit_impl(
 
     let added_units = amount / nav_before;
     let units_new = units_old + added_units;
-    let equity_new = units_new * nav_before;  // NAV invariant
+    let equity_new = units_new * nav_before; // NAV invariant
 
     // Currency from account
     let currency: String = conn
-        .query_row("SELECT currency FROM accounts WHERE id = ?1", [input.account_id], |r| r.get(0))
+        .query_row(
+            "SELECT currency FROM accounts WHERE id = ?1",
+            [input.account_id],
+            |r| r.get(0),
+        )
         .map_err(|e| format!("account not found: {e}"))?;
 
     // Insert cash flow
@@ -1659,7 +1766,8 @@ fn cashflow_deposit_impl(
         &units_old.to_string(),
         &units_new.to_string(),
         input.note.as_deref(),
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     // Insert units
     let u_id = crate::db::equity::insert_units(
@@ -1670,7 +1778,8 @@ fn cashflow_deposit_impl(
         &equity_new.to_string(),
         "deposit",
         Some(cf_id),
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(CashFlowOut {
         cash_flow_id: cf_id,
@@ -1713,7 +1822,11 @@ fn cashflow_withdraw_impl(
     let equity_new = units_new * nav_before;
 
     let currency: String = conn
-        .query_row("SELECT currency FROM accounts WHERE id = ?1", [input.account_id], |r| r.get(0))
+        .query_row(
+            "SELECT currency FROM accounts WHERE id = ?1",
+            [input.account_id],
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
 
     let cf_id = crate::db::equity::insert_cash_flow(
@@ -1726,7 +1839,8 @@ fn cashflow_withdraw_impl(
         &units_old.to_string(),
         &units_new.to_string(),
         input.note.as_deref(),
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     let u_id = crate::db::equity::insert_units(
         conn,
@@ -1736,7 +1850,8 @@ fn cashflow_withdraw_impl(
         &equity_new.to_string(),
         "withdraw",
         Some(cf_id),
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(CashFlowOut {
         cash_flow_id: cf_id,
@@ -1797,7 +1912,11 @@ pub fn equity_cashflow_fee(
     let nav = u.nav.clone();
 
     let currency: String = tx
-        .query_row("SELECT currency FROM accounts WHERE id = ?1", [input.account_id], |r| r.get(0))
+        .query_row(
+            "SELECT currency FROM accounts WHERE id = ?1",
+            [input.account_id],
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
 
     // Fee: no units change (NAV units unaffected)
@@ -1809,9 +1928,10 @@ pub fn equity_cashflow_fee(
         &currency,
         &nav,
         &units,
-        &units,  // unchanged
+        &units, // unchanged
         input.note.as_deref(),
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;
 
@@ -1835,6 +1955,353 @@ pub fn equity_cashflow_list(
 ) -> Result<Vec<crate::db::equity::CashFlowRow>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let n = limit.unwrap_or(50).clamp(1, 500);
-    crate::db::equity::list_cash_flows(&conn, account_id, n)
-        .map_err(|e| e.to_string())
+    crate::db::equity::list_cash_flows(&conn, account_id, n).map_err(|e| e.to_string())
+}
+
+// ============================================================
+// PHASE 6-B — cash flow delete (revert units + remove ledger row)
+// ============================================================
+
+#[tauri::command]
+pub fn equity_cashflow_delete(state: State<'_, AppState>, flow_id: i64) -> Result<(), String> {
+    use rust_decimal::prelude::FromStr;
+
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
+    // Load the flow
+    let (account_id, kind, amount_s, nav_before, units_before, units_after): (
+        i64,
+        String,
+        String,
+        String,
+        String,
+        String,
+    ) = tx
+        .query_row(
+            "SELECT account_id, kind, amount, nav_before, units_before, units_after
+             FROM account_cash_flows WHERE id = ?1",
+            [flow_id],
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            },
+        )
+        .map_err(|e| format!("flow {} not found: {e}", flow_id))?;
+
+    let amount = Decimal::from_str(&amount_s).map_err(|e| e.to_string())?;
+    let nav = Decimal::from_str(&nav_before).map_err(|e| e.to_string())?;
+
+    // Check this is the LATEST flow for this account
+    let latest_flow_id: Option<i64> = tx
+        .query_row(
+            "SELECT id FROM account_cash_flows WHERE account_id = ?1 ORDER BY id DESC LIMIT 1",
+            [account_id],
+            |r| r.get(0),
+        )
+        .ok();
+
+    if latest_flow_id != Some(flow_id) {
+        return Err(format!(
+            "cannot delete flow {} — not the latest for account {}. Delete newer flows first.",
+            flow_id, account_id
+        ));
+    }
+
+    // Reverse the units change
+    let (new_units, new_equity): (Decimal, Decimal) = match kind.as_str() {
+        "deposit" | "withdrawal" => {
+            let u_before = Decimal::from_str(&units_before).map_err(|e| e.to_string())?;
+            let eq = u_before * nav;
+            (u_before, eq)
+        }
+        "fee" | "funding" => {
+            let u = crate::db::equity::latest_units(&tx, account_id)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "no equity_units row".to_string())?;
+            let cur_units = Decimal::from_str(&u.units).map_err(|e| e.to_string())?;
+            let cur_equity = Decimal::from_str(&u.equity).map_err(|e| e.to_string())?;
+            (cur_units, cur_equity)
+        }
+        other => return Err(format!("unknown kind: {}", other)),
+    };
+
+    // 1. FIRST delete equity_units that reference this flow (breaks FK)
+    tx.execute(
+        "DELETE FROM equity_units WHERE cash_flow_id = ?1",
+        [flow_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // 2. THEN delete the cash_flow row
+    tx.execute("DELETE FROM account_cash_flows WHERE id = ?1", [flow_id])
+        .map_err(|e| e.to_string())?;
+
+    // 3. Insert corrective units row
+    let _ = crate::db::equity::insert_units(
+        &tx,
+        account_id,
+        &new_units.to_string(),
+        &nav.to_string(),
+        &new_equity.to_string(),
+        "adjustment",
+        None,
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    let _ = amount;
+    let _ = units_after;
+    Ok(())
+}
+
+// ============================================================
+// Instruments — restore defaults
+// ============================================================
+
+#[tauri::command]
+pub fn equity_instruments_restore_defaults(state: State<'_, AppState>) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    let defaults = [
+        // (symbol, tick_size, tick_value, contract_size, min_qty, max_qty, lot_step)
+        ("EURUSD", "0.00001", "1", "100000", "0.01", "100", "0.01"),
+        ("GBPUSD", "0.00001", "1", "100000", "0.01", "100", "0.01"),
+        ("USDJPY", "0.001", "1", "100000", "0.01", "100", "0.01"),
+        ("AUDUSD", "0.00001", "1", "100000", "0.01", "100", "0.01"),
+        ("USDCAD", "0.00001", "0.73", "100000", "0.01", "100", "0.01"),
+        ("USDCHF", "0.00001", "0.79", "100000", "0.01", "100", "0.01"),
+        ("NZDUSD", "0.00001", "1", "100000", "0.01", "100", "0.01"),
+        ("EURGBP", "0.00001", "1.27", "100000", "0.01", "100", "0.01"),
+        ("EURJPY", "0.001", "1", "100000", "0.01", "100", "0.01"),
+        ("GBPJPY", "0.001", "1", "100000", "0.01", "100", "0.01"),
+        ("CHFJPY", "0.001", "1", "100000", "0.01", "100", "0.01"),
+        ("XAUUSD", "0.01", "1", "100", "0.01", "50", "0.01"),
+        ("XAGUSD", "0.001", "5", "5000", "0.01", "50", "0.01"),
+        ("BTCUSD", "0.01", "0.01", "1", "0.01", "10", "0.01"),
+        ("ETHUSD", "0.01", "0.01", "1", "0.01", "100", "0.01"),
+        ("NAS100", "0.1", "0.1", "1", "0.1", "50", "0.1"),
+        ("SPX500", "0.1", "0.1", "1", "0.1", "50", "0.1"),
+        ("US30", "0.1", "0.1", "1", "0.1", "50", "0.1"),
+    ];
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut inserted = 0usize;
+
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for (sym, tick_size, tick_value, contract_size, min_qty, max_qty, lot_step) in defaults.iter() {
+        let rows = tx
+            .execute(
+                "INSERT OR IGNORE INTO instruments
+               (symbol, currency, tick_size, tick_value, contract_size,
+                min_qty, max_qty, lot_step, commission_per_lot, slippage_per_unit,
+                spec_source, created_at, updated_at)
+             VALUES (?1, 'USD', ?2, ?3, ?4, ?5, ?6, ?7, '0', '0',
+                     'user_entered', ?8, ?8)",
+                rusqlite::params![
+                    sym,
+                    tick_size,
+                    tick_value,
+                    contract_size,
+                    min_qty,
+                    max_qty,
+                    lot_step,
+                    now
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        inserted += rows;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(inserted)
+}
+
+// ============================================================
+// Instruments — export/import (backup)
+// ============================================================
+
+#[tauri::command]
+pub fn equity_instruments_export_json(state: State<'_, AppState>) -> Result<String, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    #[derive(serde::Serialize)]
+    struct InstRow {
+        symbol: String,
+        currency: String,
+        tick_size: String,
+        tick_value: String,
+        contract_size: String,
+        min_qty: String,
+        max_qty: String,
+        lot_step: String,
+        commission_per_lot: String,
+        slippage_per_unit: String,
+        spec_source: String,
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT symbol, currency, tick_size, tick_value, contract_size,
+                    min_qty, max_qty, lot_step, commission_per_lot, slippage_per_unit,
+                    spec_source
+             FROM instruments ORDER BY symbol",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows: Vec<InstRow> = stmt
+        .query_map([], |r| {
+            Ok(InstRow {
+                symbol: r.get(0)?,
+                currency: r.get(1)?,
+                tick_size: r.get(2)?,
+                tick_value: r.get(3)?,
+                contract_size: r.get(4)?,
+                min_qty: r.get(5)?,
+                max_qty: r.get(6)?,
+                lot_step: r.get(7)?,
+                commission_per_lot: r.get(8)?,
+                slippage_per_unit: r.get(9)?,
+                spec_source: r.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_string_pretty(&rows).map_err(|e| e.to_string())
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ImportInstrumentRow {
+    pub symbol: String,
+    pub currency: String,
+    pub tick_size: String,
+    pub tick_value: String,
+    pub contract_size: String,
+    #[serde(default = "default_min_qty")]
+    pub min_qty: String,
+    #[serde(default = "default_max_qty")]
+    pub max_qty: String,
+    #[serde(default = "default_lot_step")]
+    pub lot_step: String,
+    #[serde(default)]
+    pub commission_per_lot: String,
+    #[serde(default)]
+    pub slippage_per_unit: String,
+    #[serde(default = "default_source")]
+    pub spec_source: String,
+}
+
+fn default_min_qty() -> String {
+    "0.01".into()
+}
+fn default_max_qty() -> String {
+    "100".into()
+}
+fn default_lot_step() -> String {
+    "0.01".into()
+}
+fn default_source() -> String {
+    "user_entered".into()
+}
+
+#[tauri::command]
+pub fn equity_instruments_import_json(
+    state: State<'_, AppState>,
+    json: String,
+    replace_all: bool,
+) -> Result<usize, String> {
+    use rust_decimal::prelude::FromStr;
+
+    let rows: Vec<ImportInstrumentRow> =
+        serde_json::from_str(&json).map_err(|e| format!("parse JSON: {e}"))?;
+
+    if rows.is_empty() {
+        return Ok(0);
+    }
+
+    // Validate each row
+    for r in &rows {
+        if r.symbol.trim().is_empty() {
+            return Err("symbol required".into());
+        }
+        let _ =
+            Decimal::from_str(&r.tick_size).map_err(|e| format!("{}: tick_size: {e}", r.symbol))?;
+        let _ = Decimal::from_str(&r.tick_value)
+            .map_err(|e| format!("{}: tick_value: {e}", r.symbol))?;
+        let _ = Decimal::from_str(&r.contract_size)
+            .map_err(|e| format!("{}: contract_size: {e}", r.symbol))?;
+    }
+
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
+    if replace_all {
+        tx.execute("DELETE FROM instruments", [])
+            .map_err(|e| format!("delete all: {e}"))?;
+    }
+
+    let mut count = 0usize;
+    for r in &rows {
+        let n = tx
+            .execute(
+                "INSERT INTO instruments
+               (symbol, currency, tick_size, tick_value, contract_size,
+                min_qty, max_qty, lot_step, commission_per_lot, slippage_per_unit,
+                spec_source, created_at, updated_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?12)
+             ON CONFLICT(symbol) DO UPDATE SET
+               currency=excluded.currency,
+               tick_size=excluded.tick_size,
+               tick_value=excluded.tick_value,
+               contract_size=excluded.contract_size,
+               min_qty=excluded.min_qty,
+               max_qty=excluded.max_qty,
+               lot_step=excluded.lot_step,
+               commission_per_lot=excluded.commission_per_lot,
+               slippage_per_unit=excluded.slippage_per_unit,
+               spec_source=excluded.spec_source,
+               updated_at=excluded.updated_at",
+                rusqlite::params![
+                    r.symbol.trim().to_uppercase(),
+                    r.currency,
+                    r.tick_size,
+                    r.tick_value,
+                    r.contract_size,
+                    r.min_qty,
+                    r.max_qty,
+                    r.lot_step,
+                    if r.commission_per_lot.is_empty() {
+                        "0".into()
+                    } else {
+                        r.commission_per_lot.clone()
+                    },
+                    if r.slippage_per_unit.is_empty() {
+                        "0".into()
+                    } else {
+                        r.slippage_per_unit.clone()
+                    },
+                    if r.spec_source.is_empty() {
+                        "user_entered".into()
+                    } else {
+                        r.spec_source.clone()
+                    },
+                    now,
+                ],
+            )
+            .map_err(|e| format!("insert {}: {e}", r.symbol))?;
+        count += n;
+    }
+
+    tx.commit().map_err(|e| format!("commit: {e}"))?;
+    Ok(count)
 }

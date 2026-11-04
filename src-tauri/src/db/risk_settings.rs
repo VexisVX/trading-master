@@ -4,23 +4,32 @@ use rusqlite::{params, Connection, OptionalExtension};
 use rust_decimal::Decimal;
 
 fn dec(s: &str) -> Result<Decimal, DbError> {
-    Decimal::from_str_exact(s)
-        .map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
+    Decimal::from_str_exact(s).map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
 }
 
 pub fn get_settings(conn: &Connection, account_id: i64) -> Result<Option<RiskSettings>, DbError> {
-    let row = conn.query_row(
-        "SELECT account_id, max_risk_per_trade_pct, daily_loss_limit_pct,
+    let row = conn
+        .query_row(
+            "SELECT account_id, max_risk_per_trade_pct, daily_loss_limit_pct,
                 max_open_positions, max_portfolio_risk_pct, updated_at
          FROM risk_settings WHERE account_id=?1",
-        [account_id],
-        |r| Ok((
-            r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?,
-            r.get::<_, i64>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?,
-        )),
-    ).optional()?;
+            [account_id],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                ))
+            },
+        )
+        .optional()?;
 
-    let Some((aid, mrt, dll, mop, mpr, upd)) = row else { return Ok(None) };
+    let Some((aid, mrt, dll, mop, mpr, upd)) = row else {
+        return Ok(None);
+    };
     Ok(Some(RiskSettings {
         account_id: aid,
         max_risk_per_trade_pct: dec(&mrt)?,
@@ -32,7 +41,9 @@ pub fn get_settings(conn: &Connection, account_id: i64) -> Result<Option<RiskSet
 }
 
 pub fn update_settings(
-    conn: &Connection, account_id: i64, u: &UpdateRiskSettings,
+    conn: &Connection,
+    account_id: i64,
+    u: &UpdateRiskSettings,
 ) -> Result<(), DbError> {
     // Basic validation — reject obviously wrong values
     if u.max_risk_per_trade_pct <= Decimal::ZERO || u.max_risk_per_trade_pct > Decimal::from(100) {
@@ -106,7 +117,8 @@ mod tests {
                max_portfolio_risk_pct TEXT, updated_at TEXT
              );
              INSERT INTO risk_settings VALUES (1,'1','3',3,'5','2026-10-20');",
-        ).unwrap();
+        )
+        .unwrap();
         conn
     }
 
@@ -123,12 +135,17 @@ mod tests {
     #[test]
     fn update_and_read() {
         let conn = fresh_db();
-        update_settings(&conn, 1, &UpdateRiskSettings {
-            max_risk_per_trade_pct: dec!(0.5),
-            daily_loss_limit_pct: dec!(2),
-            max_open_positions: 5,
-            max_portfolio_risk_pct: dec!(4),
-        }).unwrap();
+        update_settings(
+            &conn,
+            1,
+            &UpdateRiskSettings {
+                max_risk_per_trade_pct: dec!(0.5),
+                daily_loss_limit_pct: dec!(2),
+                max_open_positions: 5,
+                max_portfolio_risk_pct: dec!(4),
+            },
+        )
+        .unwrap();
         let s = get_settings(&conn, 1).unwrap().unwrap();
         assert_eq!(s.max_risk_per_trade_pct, dec!(0.5));
         assert_eq!(s.daily_loss_limit_pct, dec!(2));
@@ -159,13 +176,22 @@ mod tests {
     #[test]
     fn unknown_account_creates_row() {
         let conn = fresh_db();
-        conn.execute("INSERT INTO accounts VALUES (2,'B','USD','5000',1,'2026-01-01')", []).unwrap();
-        update_settings(&conn, 2, &UpdateRiskSettings {
-            max_risk_per_trade_pct: dec!(2),
-            daily_loss_limit_pct: dec!(4),
-            max_open_positions: 2,
-            max_portfolio_risk_pct: dec!(8),
-        }).unwrap();
+        conn.execute(
+            "INSERT INTO accounts VALUES (2,'B','USD','5000',1,'2026-01-01')",
+            [],
+        )
+        .unwrap();
+        update_settings(
+            &conn,
+            2,
+            &UpdateRiskSettings {
+                max_risk_per_trade_pct: dec!(2),
+                daily_loss_limit_pct: dec!(4),
+                max_open_positions: 2,
+                max_portfolio_risk_pct: dec!(8),
+            },
+        )
+        .unwrap();
         let s = get_settings(&conn, 2).unwrap().unwrap();
         assert_eq!(s.max_risk_per_trade_pct, dec!(2));
     }

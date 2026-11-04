@@ -1,15 +1,17 @@
 //! End-to-end integration tests for the equity engine.
 
-use rust_decimal::Decimal;
 use rust_decimal::prelude::FromStr;
+use rust_decimal::Decimal;
 
 use trading_manager_lib::equity::buffer;
-use trading_manager_lib::equity::protection;
 use trading_manager_lib::equity::prop_rules;
+use trading_manager_lib::equity::protection;
 use trading_manager_lib::equity::risk_engine;
 use trading_manager_lib::equity::state_machine;
 
-fn d(s: &str) -> Decimal { Decimal::from_str(s).unwrap() }
+fn d(s: &str) -> Decimal {
+    Decimal::from_str(s).unwrap()
+}
 
 #[test]
 fn scenario_normal_growth_then_drawdown() {

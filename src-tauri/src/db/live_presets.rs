@@ -19,26 +19,36 @@ pub struct LivePreset {
 pub fn list_presets(conn: &Connection, account_id: i64) -> Result<Vec<LivePreset>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, account_id, name, instrument, payload_json, created_at, updated_at
-         FROM live_presets WHERE account_id=?1 ORDER BY updated_at DESC"
+         FROM live_presets WHERE account_id=?1 ORDER BY updated_at DESC",
     )?;
-    let rows = stmt.query_map([account_id], |r| Ok(LivePreset {
-        id: r.get(0)?,
-        account_id: r.get(1)?,
-        name: r.get(2)?,
-        instrument: r.get(3)?,
-        payload_json: r.get(4)?,
-        created_at: r.get(5)?,
-        updated_at: r.get(6)?,
-    }))?;
+    let rows = stmt.query_map([account_id], |r| {
+        Ok(LivePreset {
+            id: r.get(0)?,
+            account_id: r.get(1)?,
+            name: r.get(2)?,
+            instrument: r.get(3)?,
+            payload_json: r.get(4)?,
+            created_at: r.get(5)?,
+            updated_at: r.get(6)?,
+        })
+    })?;
     let mut out = Vec::new();
-    for row in rows { out.push(row?); }
+    for row in rows {
+        out.push(row?);
+    }
     Ok(out)
 }
 
 pub fn create_preset(
-    conn: &Connection, account_id: i64, name: &str, instrument: Option<&str>, payload_json: &str,
+    conn: &Connection,
+    account_id: i64,
+    name: &str,
+    instrument: Option<&str>,
+    payload_json: &str,
 ) -> Result<i64, DbError> {
-    if name.trim().is_empty() { return Err(DbError::Sqlite(rusqlite::Error::InvalidQuery)); }
+    if name.trim().is_empty() {
+        return Err(DbError::Sqlite(rusqlite::Error::InvalidQuery));
+    }
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "INSERT INTO live_presets (account_id, name, instrument, payload_json, created_at, updated_at)
@@ -62,7 +72,11 @@ pub struct TradeDraft {
     pub updated_at: String,
 }
 
-pub fn create_draft(conn: &Connection, account_id: i64, payload_json: &str) -> Result<i64, DbError> {
+pub fn create_draft(
+    conn: &Connection,
+    account_id: i64,
+    payload_json: &str,
+) -> Result<i64, DbError> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "INSERT INTO trade_drafts (account_id, payload_json, created_at, updated_at)
@@ -76,14 +90,18 @@ pub fn get_draft(conn: &Connection, id: i64) -> Result<Option<TradeDraft>, DbErr
     conn.query_row(
         "SELECT id, account_id, payload_json, created_at, updated_at FROM trade_drafts WHERE id=?1",
         [id],
-        |r| Ok(TradeDraft {
-            id: r.get(0)?,
-            account_id: r.get(1)?,
-            payload_json: r.get(2)?,
-            created_at: r.get(3)?,
-            updated_at: r.get(4)?,
-        }),
-    ).optional().map_err(Into::into)
+        |r| {
+            Ok(TradeDraft {
+                id: r.get(0)?,
+                account_id: r.get(1)?,
+                payload_json: r.get(2)?,
+                created_at: r.get(3)?,
+                updated_at: r.get(4)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
 }
 
 pub fn delete_draft(conn: &Connection, id: i64) -> Result<(), DbError> {

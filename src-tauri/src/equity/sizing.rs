@@ -1,13 +1,13 @@
 //! Position sizing (formulas 21–22).
 //! size = r_allowed / ((|entry − stop| × multiplier) + commission_per_unit + slippage_buffer)
 
-use rust_decimal::Decimal;
 use rust_decimal::prelude::FromStr;
+use rust_decimal::Decimal;
 
 #[derive(Debug, Clone)]
 pub struct SizingInput {
-    pub entry: String,           // price
-    pub stop: String,            // price
+    pub entry: String,               // price
+    pub stop: String,                // price
     pub contract_multiplier: String, // e.g. 100000 for 1 lot of EURUSD
     pub commission_per_unit: String, // money per unit (0 if unknown)
     pub slippage_buffer: String,     // money per unit (conservative)
@@ -93,7 +93,12 @@ mod tests {
     fn basic_sizing() {
         // RA = 100, entry 1.1000, stop 1.0950, mult 100000
         // per_unit = 0.005 * 100000 = 500 → size = 100/500 = 0.2
-        let r = compute_size(Decimal::from_str("100").unwrap(), &inp("1.1000", "1.0950", "100000"), None).unwrap();
+        let r = compute_size(
+            Decimal::from_str("100").unwrap(),
+            &inp("1.1000", "1.0950", "100000"),
+            None,
+        )
+        .unwrap();
         assert_eq!(r.size, Decimal::from_str("0.2").unwrap());
     }
 
@@ -116,14 +121,23 @@ mod tests {
 
     #[test]
     fn identical_prices_error() {
-        let e = compute_size(Decimal::from_str("100").unwrap(), &inp("1.1000", "1.1000", "100000"), None);
+        let e = compute_size(
+            Decimal::from_str("100").unwrap(),
+            &inp("1.1000", "1.1000", "100000"),
+            None,
+        );
         assert!(e.is_err());
     }
 
     #[test]
     fn rr_computed() {
         // entry 1.1000, stop 1.0950 → risk 0.005; tp 1.1150 → reward 0.015 → RR = 3
-        let r = compute_size(Decimal::from_str("100").unwrap(), &inp("1.1000", "1.0950", "100000"), Some("1.1150")).unwrap();
+        let r = compute_size(
+            Decimal::from_str("100").unwrap(),
+            &inp("1.1000", "1.0950", "100000"),
+            Some("1.1150"),
+        )
+        .unwrap();
         assert_eq!(r.rr.unwrap(), Decimal::from_str("3").unwrap());
     }
 }

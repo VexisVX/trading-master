@@ -1,21 +1,21 @@
 pub mod accounts;
-pub mod goals;
-pub mod backtest;
-pub mod equity;
-pub mod backup;
 pub mod analytics;
+pub mod backtest;
+pub mod backup;
+pub mod equity;
+pub mod goals;
 pub mod live_calc;
 
-pub mod news;
 pub mod live_presets;
+pub mod news;
 pub mod prop_firm;
 pub mod risk;
+pub mod risk_settings;
 pub mod settings;
 pub mod storage;
-pub mod risk_settings;
 pub mod strategies;
-pub mod trading_plans;
 pub mod trades;
+pub mod trading_plans;
 
 use crate::db;
 use rusqlite::Connection;
@@ -36,4 +36,6 @@ pub fn get_schema_version(state: State<AppState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn get_balance_placeholder() -> String { "—".to_string() }
+pub fn get_balance_placeholder() -> String {
+    "—".to_string()
+}

@@ -49,17 +49,29 @@ pub fn compute(units: Decimal, nav_hwm: Decimal, cfg: &ProtectionConfig) -> Prot
             (None, Decimal::ZERO)
         } else {
             let mut x = (g - cfg.profit_protect_activation) / span;
-            if x < Decimal::ZERO { x = Decimal::ZERO; }
-            if x > Decimal::ONE { x = Decimal::ONE; }
+            if x < Decimal::ZERO {
+                x = Decimal::ZERO;
+            }
+            if x > Decimal::ONE {
+                x = Decimal::ONE;
+            }
             let q = cfg.max_profit_retention * smoothstep(x);
             let fp = units * (Decimal::ONE + q * g);
             (Some(fp), q)
         }
     };
 
-    let f_internal = match f_profit { Some(fp) => fp.max(f_trail), None => f_trail };
+    let f_internal = match f_profit {
+        Some(fp) => fp.max(f_trail),
+        None => f_trail,
+    };
 
-    ProtectionResult { f_profit, f_trail, f_internal, q_retention }
+    ProtectionResult {
+        f_profit,
+        f_trail,
+        f_internal,
+        q_retention,
+    }
 }
 
 #[cfg(test)]
@@ -67,7 +79,9 @@ mod tests {
     use super::*;
     use rust_decimal_macros::dec;
 
-    fn cfg() -> ProtectionConfig { ProtectionConfig::default_v1() }
+    fn cfg() -> ProtectionConfig {
+        ProtectionConfig::default_v1()
+    }
 
     #[test]
     fn below_activation_no_f_profit() {

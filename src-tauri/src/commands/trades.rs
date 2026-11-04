@@ -62,13 +62,22 @@ pub fn trades_add_exit(
         .as_deref()
         .and_then(crate::domain::trade::TradeOutcome::from_str);
     let parsed_pnl = match manual_pnl {
-        Some(ref s) if !s.trim().is_empty() => Some(
-            Decimal::from_str(s.trim()).map_err(|e| format!("manual_pnl: {e}"))?
-        ),
+        Some(ref s) if !s.trim().is_empty() => {
+            Some(Decimal::from_str(s.trim()).map_err(|e| format!("manual_pnl: {e}"))?)
+        }
         _ => None,
     };
-    repo::add_exit_leg(&conn, trade_id, p, q, c, executed_at, parsed_outcome, parsed_pnl)
-        .map_err(|e| e.to_string())
+    repo::add_exit_leg(
+        &conn,
+        trade_id,
+        p,
+        q,
+        c,
+        executed_at,
+        parsed_outcome,
+        parsed_pnl,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -87,7 +96,11 @@ pub fn trades_delete(state: State<AppState>, id: i64) -> Result<(), String> {
 pub fn trades_default_account_id(state: State<AppState>) -> Result<i64, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let id: i64 = conn
-        .query_row("SELECT id FROM accounts WHERE is_active=1 ORDER BY id LIMIT 1", [], |r| r.get(0))
+        .query_row(
+            "SELECT id FROM accounts WHERE is_active=1 ORDER BY id LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
     Ok(id)
 }
@@ -102,7 +115,10 @@ pub fn trades_export_csv(state: State<AppState>, dest: String) -> Result<u64, St
 
 #[tauri::command]
 pub fn trades_add_attachment(
-    state: State<AppState>, trade_id: i64, filename: String, kind: String,
+    state: State<AppState>,
+    trade_id: i64,
+    filename: String,
+    kind: String,
 ) -> Result<i64, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     repo::add_attachment(&conn, trade_id, &filename, &kind).map_err(|e| e.to_string())
@@ -132,7 +148,9 @@ pub fn trades_partial_close(
     let qty = Decimal::from_str(&exit_quantity).map_err(|e| format!("qty: {e}"))?;
     let cost = Decimal::from_str(&cost_per_unit).map_err(|e| format!("cost: {e}"))?;
     let pnl = match manual_pnl {
-        Some(s) if !s.trim().is_empty() => Some(Decimal::from_str(s.trim()).map_err(|e| format!("pnl: {e}"))?),
+        Some(s) if !s.trim().is_empty() => {
+            Some(Decimal::from_str(s.trim()).map_err(|e| format!("pnl: {e}"))?)
+        }
         _ => None,
     };
 
@@ -173,7 +191,9 @@ pub fn trades_copy_screenshot(
     use tauri::Manager;
     let _conn = state.db.lock().map_err(|e| e.to_string())?;
 
-    let app_dir = app.path().app_data_dir()
+    let app_dir = app
+        .path()
+        .app_data_dir()
         .map_err(|e| format!("app_data_dir: {e}"))?;
 
     let source = std::path::Path::new(&source_path);
@@ -186,8 +206,7 @@ pub fn trades_copy_screenshot(
 #[tauri::command]
 pub fn export_text_file(dest: String, content: String) -> Result<(), String> {
     use std::io::Write;
-    let mut file = std::fs::File::create(&dest)
-        .map_err(|e| format!("create file: {e}"))?;
+    let mut file = std::fs::File::create(&dest).map_err(|e| format!("create file: {e}"))?;
     file.write_all(content.as_bytes())
         .map_err(|e| format!("write: {e}"))?;
     Ok(())
@@ -220,8 +239,8 @@ pub fn trades_quick_create(
         }
     };
 
-    let outcome_enum = TradeOutcome::from_str(&outcome)
-        .ok_or_else(|| format!("invalid outcome: {outcome}"))?;
+    let outcome_enum =
+        TradeOutcome::from_str(&outcome).ok_or_else(|| format!("invalid outcome: {outcome}"))?;
 
     let r_input = parse_opt(&r_value)?;
     let entry_input = parse_opt(&entry_price)?;
@@ -318,15 +337,15 @@ pub fn trades_quick_create(
             now,
             Some(outcome_enum),
             manual_pnl,
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     let _id = trade_id;
     drop(conn); // release lock before auto-snapshot
-//     let _ = super::equity::equity_auto_snapshot_create(...); // DISABLED
+                //     let _ = super::equity::equity_auto_snapshot_create(...); // DISABLED
     Ok(_id)
 }
-
 
 // ============================================================
 // PHASE 2.2-A — current price + current stop commands
@@ -355,8 +374,7 @@ pub fn trades_update_current_price(
     use rust_decimal::prelude::FromStr;
 
     // 1. Validate price
-    let price = Decimal::from_str(&input.price)
-        .map_err(|e| format!("price: {e}"))?;
+    let price = Decimal::from_str(&input.price).map_err(|e| format!("price: {e}"))?;
     if price <= Decimal::ZERO {
         return Err("price must be > 0".into());
     }
@@ -387,15 +405,17 @@ pub fn trades_update_current_price(
 
     // 4. Update
     let now = chrono::Utc::now().to_rfc3339();
-    let updated = conn.execute(
-        "UPDATE trades
+    let updated = conn
+        .execute(
+            "UPDATE trades
             SET current_price = ?1,
                 current_price_updated_at = ?2,
                 current_price_source = ?3,
                 updated_at = ?2
           WHERE id = ?4 AND status = 'open'",
-        rusqlite::params![price.to_string(), now, source, input.trade_id],
-    ).map_err(|e| e.to_string())?;
+            rusqlite::params![price.to_string(), now, source, input.trade_id],
+        )
+        .map_err(|e| e.to_string())?;
 
     if updated == 0 {
         return Err("update affected 0 rows (trade may have closed)".into());
@@ -423,8 +443,7 @@ pub fn trades_update_current_stop(
 ) -> Result<(), String> {
     use rust_decimal::prelude::FromStr;
 
-    let new_stop = Decimal::from_str(&input.new_stop)
-        .map_err(|e| format!("new_stop: {e}"))?;
+    let new_stop = Decimal::from_str(&input.new_stop).map_err(|e| format!("new_stop: {e}"))?;
     if new_stop <= Decimal::ZERO {
         return Err("new_stop must be > 0".into());
     }
@@ -460,7 +479,8 @@ pub fn trades_update_current_stop(
     tx.execute(
         "UPDATE trades SET current_stop = ?1, updated_at = ?2 WHERE id = ?3",
         rusqlite::params![new_stop.to_string(), now, input.trade_id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     // 2. Audit into trade_sl_history
     tx.execute(
@@ -473,7 +493,8 @@ pub fn trades_update_current_stop(
             input.reason.as_deref().unwrap_or("manual_update"),
             now,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(())

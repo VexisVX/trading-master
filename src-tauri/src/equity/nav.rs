@@ -19,7 +19,10 @@ impl NavState {
         if equity <= Decimal::ZERO {
             return Err("initial equity must be > 0".into());
         }
-        Ok(Self { units: equity, nav: Decimal::ONE })
+        Ok(Self {
+            units: equity,
+            nav: Decimal::ONE,
+        })
     }
 
     /// Recompute NAV = Equity / Units.
@@ -41,7 +44,10 @@ impl NavState {
         }
         let added_units = amount / nav_before;
         Ok((
-            Self { units: self.units + added_units, nav: nav_before },
+            Self {
+                units: self.units + added_units,
+                nav: nav_before,
+            },
             added_units,
         ))
     }
@@ -61,7 +67,13 @@ impl NavState {
         if new_units <= Decimal::ZERO {
             return Err("withdrawal would zero out units".into());
         }
-        Ok((Self { units: new_units, nav: nav_before }, removed_units))
+        Ok((
+            Self {
+                units: new_units,
+                nav: nav_before,
+            },
+            removed_units,
+        ))
     }
 }
 
@@ -92,7 +104,10 @@ mod tests {
         // Start 10000, grow to 12000 (NAV = 1.2), then deposit 1200.
         let n = NavState::initial(dec!(10000)).unwrap();
         let nav_after_growth = n.nav_for(dec!(12000)).unwrap(); // 1.2
-        let n2 = NavState { units: n.units, nav: nav_after_growth };
+        let n2 = NavState {
+            units: n.units,
+            nav: nav_after_growth,
+        };
         let (n3, added) = n2.deposit(dec!(1200)).unwrap();
         // added = 1200 / 1.2 = 1000 units
         assert_eq!(added, dec!(1000));

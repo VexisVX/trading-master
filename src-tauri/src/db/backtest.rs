@@ -150,10 +150,7 @@ pub struct TradeFilter {
 
 // ---------- Queries ----------
 
-pub fn list_trades(
-    conn: &Connection,
-    filter: &TradeFilter,
-) -> Result<Vec<BacktestTrade>, DbError> {
+pub fn list_trades(conn: &Connection, filter: &TradeFilter) -> Result<Vec<BacktestTrade>, DbError> {
     let mut sql = String::from(
         "SELECT id, symbol, side, entry_price, stop_price, take_profit,
                 exit_price, outcome, r_multiple, setup_tag, opened_at, closed_at, notes
@@ -184,16 +181,22 @@ pub fn list_trades(
     sql.push_str(" ORDER BY opened_at DESC, id DESC");
 
     let mut stmt = conn.prepare(&sql)?;
-    let param_refs: Vec<&dyn rusqlite::ToSql> =
-        params.iter().map(|b| b.as_ref()).collect();
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
     let rows = stmt.query_map(param_refs.as_slice(), |r| {
         Ok(BacktestTrade {
-            id: r.get(0)?, symbol: r.get(1)?, side: r.get(2)?,
-            entry_price: r.get(3)?, stop_price: r.get(4)?,
-            take_profit: r.get(5)?, exit_price: r.get(6)?,
-            outcome: r.get(7)?, r_multiple: r.get(8)?,
-            setup_tag: r.get(9)?, opened_at: r.get(10)?,
-            closed_at: r.get(11)?, notes: r.get(12)?,
+            id: r.get(0)?,
+            symbol: r.get(1)?,
+            side: r.get(2)?,
+            entry_price: r.get(3)?,
+            stop_price: r.get(4)?,
+            take_profit: r.get(5)?,
+            exit_price: r.get(6)?,
+            outcome: r.get(7)?,
+            r_multiple: r.get(8)?,
+            setup_tag: r.get(9)?,
+            opened_at: r.get(10)?,
+            closed_at: r.get(11)?,
+            notes: r.get(12)?,
         })
     })?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -223,9 +226,19 @@ pub fn create_trade(conn: &Connection, t: &NewBacktestTrade) -> Result<i64, DbEr
           created_at, updated_at)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13)",
         rusqlite::params![
-            t.symbol, t.side, t.entry_price, t.stop_price,
-            t.take_profit, t.exit_price, t.outcome, t.r_multiple,
-            t.setup_tag, t.opened_at, t.closed_at, t.notes, now,
+            t.symbol,
+            t.side,
+            t.entry_price,
+            t.stop_price,
+            t.take_profit,
+            t.exit_price,
+            t.outcome,
+            t.r_multiple,
+            t.setup_tag,
+            t.opened_at,
+            t.closed_at,
+            t.notes,
+            now,
         ],
     )?;
     Ok(conn.last_insert_rowid())

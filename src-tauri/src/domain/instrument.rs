@@ -15,7 +15,9 @@ pub enum SpecSource {
 }
 
 impl Default for SpecSource {
-    fn default() -> Self { SpecSource::UserEntered }
+    fn default() -> Self {
+        SpecSource::UserEntered
+    }
 }
 
 impl SpecSource {

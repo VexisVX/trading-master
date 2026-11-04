@@ -10,13 +10,17 @@ pub fn copy_attachment(
     kind: &str,
 ) -> std::io::Result<PathBuf> {
     if !source.exists() {
-        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "source not found"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "source not found",
+        ));
     }
 
     let attach_dir = app_data_dir.join("attachments").join(trade_id.to_string());
     fs::create_dir_all(&attach_dir)?;
 
-    let filename = source.file_name()
+    let filename = source
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("attachment")
         .to_string();

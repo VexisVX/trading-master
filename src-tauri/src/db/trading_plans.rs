@@ -16,21 +16,32 @@ pub struct TradingPlan {
 pub fn list_plans(conn: &Connection, strategy_id: i64) -> Result<Vec<TradingPlan>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, strategy_id, name, checklist_json, notes, created_at, updated_at
-         FROM trading_plans WHERE strategy_id=?1 ORDER BY id DESC"
+         FROM trading_plans WHERE strategy_id=?1 ORDER BY id DESC",
     )?;
-    let rows = stmt.query_map([strategy_id], |r| Ok(TradingPlan {
-        id: r.get(0)?, strategy_id: r.get(1)?, name: r.get(2)?,
-        checklist_json: r.get(3)?, notes: r.get(4)?,
-        created_at: r.get(5)?, updated_at: r.get(6)?,
-    }))?;
+    let rows = stmt.query_map([strategy_id], |r| {
+        Ok(TradingPlan {
+            id: r.get(0)?,
+            strategy_id: r.get(1)?,
+            name: r.get(2)?,
+            checklist_json: r.get(3)?,
+            notes: r.get(4)?,
+            created_at: r.get(5)?,
+            updated_at: r.get(6)?,
+        })
+    })?;
     let mut out = Vec::new();
-    for row in rows { out.push(row?); }
+    for row in rows {
+        out.push(row?);
+    }
     Ok(out)
 }
 
 pub fn create_plan(
-    conn: &Connection, strategy_id: i64, name: &str,
-    checklist_json: &str, notes: Option<&str>,
+    conn: &Connection,
+    strategy_id: i64,
+    name: &str,
+    checklist_json: &str,
+    notes: Option<&str>,
 ) -> Result<i64, DbError> {
     if name.trim().is_empty() {
         return Err(DbError::Sqlite(rusqlite::Error::InvalidQuery));
@@ -45,7 +56,11 @@ pub fn create_plan(
 }
 
 pub fn update_plan(
-    conn: &Connection, id: i64, name: &str, checklist_json: &str, notes: Option<&str>,
+    conn: &Connection,
+    id: i64,
+    name: &str,
+    checklist_json: &str,
+    notes: Option<&str>,
 ) -> Result<(), DbError> {
     let now = chrono::Utc::now().to_rfc3339();
     let affected = conn.execute(

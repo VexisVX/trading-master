@@ -14,10 +14,18 @@ pub struct RecoveryAuth {
 
 impl RecoveryAuth {
     pub fn none() -> Self {
-        Self { authorized: false, expires_at: None, probe_risk_pct: Decimal::new(25, 2) }
+        Self {
+            authorized: false,
+            expires_at: None,
+            probe_risk_pct: Decimal::new(25, 2),
+        }
     }
     pub fn grant(probe_pct: Decimal) -> Self {
-        Self { authorized: true, expires_at: None, probe_risk_pct: probe_pct }
+        Self {
+            authorized: true,
+            expires_at: None,
+            probe_risk_pct: probe_pct,
+        }
     }
     pub fn revoke(&mut self) {
         self.authorized = false;
@@ -26,7 +34,9 @@ impl RecoveryAuth {
 
 /// Given base R and recovery auth, return the probe risk.
 pub fn probe_r(r_base: Decimal, auth: &RecoveryAuth) -> Decimal {
-    if !auth.authorized { return Decimal::ZERO; }
+    if !auth.authorized {
+        return Decimal::ZERO;
+    }
     r_base * auth.probe_risk_pct
 }
 

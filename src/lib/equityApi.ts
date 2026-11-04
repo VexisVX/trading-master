@@ -78,6 +78,8 @@ export interface RiskDetail {
   f_internal: string;
   f_prop: string;
   binding_constraint: string;
+  r_target: string;
+  r_buffer: string;
 }
 
 export interface DecisionOut {
@@ -224,43 +226,35 @@ export interface RiskPreview {
   high_watermark: string;
   net_profit: string;
   dd_pct: string;
-  phase: string;
-  loss_capacity: string;
-  profit_retention: string;
-  f_profit: string;
-  f_trail: string;
-  f_prop: string;
-  f_hybrid: string;
-  // new (S8)
   state: string;
   state_enum: string;
+
+  f_profit: string;
+  f_trail: string;
+  f_internal: string;
+  f_prop: string;
+  profit_retention: string;
+  loss_capacity: string;
+
+  buffer: string;
   buffer_r: string;
   m_preserve: string;
-  f_internal: string;
+  execution_buffer: string;
 
   r_base: string;
-  m_dd: string;
-  m_loss: string;
-  r_adaptive: string;
-
+  r_target: string;
+  r_buffer: string;
   r_portfolio_cap: string;
   r_daily_cap: string;
-  r_floor_cap: string;
   r_prop_cap: string;
-
   r_allowed: string;
   binding_constraint: string;
 
   r0_pct: string;
-  dd_1_pct: string;
-  dd_2_pct: string;
-  dd_3_pct: string;
-  m_dd_1: string;
-  m_dd_2: string;
-  m_dd_3: string;
-  m_dd_4: string;
-  m_loss_table: string;
-  n_max: number;
+  profit_activation: string;
+  profit_full: string;
+  max_retention: string;
+  trailing_dd: string;
   alpha_pct: string;
   daily_limit: string;
   portfolio_max: string;
@@ -689,6 +683,22 @@ export async function deleteInstrument(symbol: string): Promise<void> {
   return invoke<void>("equity_instrument_delete", { symbol });
 }
 
+export async function restoreDefaultInstruments(): Promise<number> {
+  return invoke<number>("equity_instruments_restore_defaults");
+}
+
+export async function exportInstrumentsJSON(): Promise<string> {
+  return invoke<string>("equity_instruments_export_json");
+}
+
+export async function importInstrumentsJSON(
+  json: string,
+  replaceAll: boolean
+): Promise<number> {
+  return invoke<number>("equity_instruments_import_json", { json, replaceAll });
+}
+
+
 
 
 /* ============================================================
@@ -739,6 +749,10 @@ export async function cashflowFee(input: CashFlowInput): Promise<CashFlowOut> {
 
 export async function listCashFlows(accountId: number, limit = 50): Promise<CashFlowRow[]> {
   return invoke<CashFlowRow[]>("equity_cashflow_list", { accountId, limit });
+}
+
+export async function deleteCashFlow(flowId: number): Promise<void> {
+  return invoke<void>("equity_cashflow_delete", { flowId });
 }
 
 /* ============================================================

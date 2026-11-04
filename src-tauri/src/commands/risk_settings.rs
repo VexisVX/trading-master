@@ -7,14 +7,19 @@ use std::str::FromStr;
 use tauri::State;
 
 #[tauri::command]
-pub fn risk_settings_get(state: State<AppState>, account_id: i64) -> Result<Option<RiskSettings>, String> {
+pub fn risk_settings_get(
+    state: State<AppState>,
+    account_id: i64,
+) -> Result<Option<RiskSettings>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     rs::get_settings(&conn, account_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn risk_settings_update(
-    state: State<AppState>, account_id: i64, update: UpdateRiskSettings,
+    state: State<AppState>,
+    account_id: i64,
+    update: UpdateRiskSettings,
 ) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     rs::update_settings(&conn, account_id, &update).map_err(|e| e.to_string())

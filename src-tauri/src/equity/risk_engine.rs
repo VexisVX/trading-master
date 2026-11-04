@@ -38,17 +38,35 @@ pub fn compute(i: &RiskInput) -> RiskResult {
     let mut r_allowed = r_target;
     let mut binding: &'static str = "Target";
 
-    if i.r_buffer < r_allowed { r_allowed = i.r_buffer; binding = "Buffer"; }
-    if i.r_portfolio_remaining < r_allowed { r_allowed = i.r_portfolio_remaining; binding = "Portfolio"; }
-    if i.r_daily_remaining < r_allowed { r_allowed = i.r_daily_remaining; binding = "Daily"; }
-    if i.r_prop_remaining < r_allowed { r_allowed = i.r_prop_remaining; binding = "Prop"; }
+    if i.r_buffer < r_allowed {
+        r_allowed = i.r_buffer;
+        binding = "Buffer";
+    }
+    if i.r_portfolio_remaining < r_allowed {
+        r_allowed = i.r_portfolio_remaining;
+        binding = "Portfolio";
+    }
+    if i.r_daily_remaining < r_allowed {
+        r_allowed = i.r_daily_remaining;
+        binding = "Daily";
+    }
+    if i.r_prop_remaining < r_allowed {
+        r_allowed = i.r_prop_remaining;
+        binding = "Prop";
+    }
 
-    if r_allowed < Decimal::ZERO { r_allowed = Decimal::ZERO; }
+    if r_allowed < Decimal::ZERO {
+        r_allowed = Decimal::ZERO;
+    }
 
     // Display-friendly caps: when a cap is Decimal::MAX (disabled),
     // show r_target instead of the sentinel value.
     let display_cap = |v: Decimal| -> Decimal {
-        if v == Decimal::MAX { r_target } else { v }
+        if v == Decimal::MAX {
+            r_target
+        } else {
+            v
+        }
     };
 
     RiskResult {

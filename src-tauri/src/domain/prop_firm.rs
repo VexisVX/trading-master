@@ -31,9 +31,9 @@ pub struct UpdatePropFirmRules {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuleCheck {
     pub name: String,
-    pub passed: bool,         // true = rule is met, false = breached
-    pub current: Decimal,     // current value (e.g. 4.2% drawdown)
-    pub limit: Decimal,       // the limit (e.g. 10%)
+    pub passed: bool,     // true = rule is met, false = breached
+    pub current: Decimal, // current value (e.g. 4.2% drawdown)
+    pub limit: Decimal,   // the limit (e.g. 10%)
     pub message: String,
 }
 

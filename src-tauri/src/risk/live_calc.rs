@@ -19,7 +19,10 @@ fn round2(v: Decimal) -> Decimal {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum CalcMode { Simple, Advanced }
+pub enum CalcMode {
+    Simple,
+    Advanced,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiveCalcInput {
@@ -59,21 +62,24 @@ pub struct LiveCalcInput {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum RiskMode { Pct, Fixed }
+pub enum RiskMode {
+    Pct,
+    Fixed,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiveCalcResult {
     pub stop_distance_price: Decimal,
     pub risk_per_lot: Decimal,
-    pub total_risk: Decimal,           // gross risk at stop
-    pub risk_pct: Decimal,             // gross risk % of balance
+    pub total_risk: Decimal, // gross risk at stop
+    pub risk_pct: Decimal,   // gross risk % of balance
 
-    pub commission_total: Decimal,     // round-trip commission across all exits
-    pub spread_cost: Decimal,          // spread cost in account currency
-    pub total_costs: Decimal,          // commission + spread
+    pub commission_total: Decimal, // round-trip commission across all exits
+    pub spread_cost: Decimal,      // spread cost in account currency
+    pub total_costs: Decimal,      // commission + spread
 
-    pub net_risk: Decimal,             // gross risk + costs
-    pub net_risk_pct: Decimal,         // net risk % of balance
+    pub net_risk: Decimal,     // gross risk + costs
+    pub net_risk_pct: Decimal, // net risk % of balance
 
     pub reward_per_lot: Option<Decimal>,
     pub total_reward: Option<Decimal>, // gross reward at TP
@@ -83,7 +89,7 @@ pub struct LiveCalcResult {
     pub notional: Decimal,
     pub required_margin: Decimal,
     pub free_margin_after: Decimal,
-    pub margin_used_pct: Decimal,      // required_margin / balance * 100
+    pub margin_used_pct: Decimal, // required_margin / balance * 100
 
     pub warnings: Vec<String>,
     pub verdict: String,
@@ -91,32 +97,51 @@ pub struct LiveCalcResult {
 
 #[derive(Debug, Error)]
 pub enum LiveCalcError {
-    #[error("size must be > 0")] InvalidSize,
-    #[error("balance must be > 0")] InvalidBalance,
-    #[error("stop must differ from entry")] InvalidStop,
-    #[error("take profit on wrong side of entry for {0} trade")] InvalidTpDirection(String),
-    #[error("advanced mode needs contract_size, value_per_point, point_size, leverage")] MissingAdvanced,
-    #[error("simple mode needs margin_usd and value_per_price_unit")] MissingSimple,
-    #[error("all inputs must be > 0")] InvalidInput,
-    #[error("quantity {0} is below minimum {1}")] QuantityBelowMin(Decimal, Decimal),
-    #[error("quantity {0} is above maximum {1}")] QuantityAboveMax(Decimal, Decimal),
-    #[error("quantity {0} is not a multiple of step {1}")] QuantityNotOnStep(Decimal, Decimal),
+    #[error("size must be > 0")]
+    InvalidSize,
+    #[error("balance must be > 0")]
+    InvalidBalance,
+    #[error("stop must differ from entry")]
+    InvalidStop,
+    #[error("take profit on wrong side of entry for {0} trade")]
+    InvalidTpDirection(String),
+    #[error("advanced mode needs contract_size, value_per_point, point_size, leverage")]
+    MissingAdvanced,
+    #[error("simple mode needs margin_usd and value_per_price_unit")]
+    MissingSimple,
+    #[error("all inputs must be > 0")]
+    InvalidInput,
+    #[error("quantity {0} is below minimum {1}")]
+    QuantityBelowMin(Decimal, Decimal),
+    #[error("quantity {0} is above maximum {1}")]
+    QuantityAboveMax(Decimal, Decimal),
+    #[error("quantity {0} is not a multiple of step {1}")]
+    QuantityNotOnStep(Decimal, Decimal),
 }
 
 pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
-    if i.size <= Decimal::ZERO { return Err(LiveCalcError::InvalidSize); }
-    if i.balance <= Decimal::ZERO { return Err(LiveCalcError::InvalidBalance); }
+    if i.size <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidSize);
+    }
+    if i.balance <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidBalance);
+    }
 
     // --- Quantity validation ---
     if let Some(min) = i.min_quantity {
-        if i.size < min { return Err(LiveCalcError::QuantityBelowMin(i.size, min)); }
+        if i.size < min {
+            return Err(LiveCalcError::QuantityBelowMin(i.size, min));
+        }
     }
     if let Some(max) = i.max_quantity {
-        if i.size > max { return Err(LiveCalcError::QuantityAboveMax(i.size, max)); }
+        if i.size > max {
+            return Err(LiveCalcError::QuantityAboveMax(i.size, max));
+        }
     }
     if let Some(step) = i.quantity_step {
         if step > Decimal::ZERO {
-            let q = (i.size / step).round_dp_with_strategy(0, RoundingStrategy::MidpointAwayFromZero);
+            let q =
+                (i.size / step).round_dp_with_strategy(0, RoundingStrategy::MidpointAwayFromZero);
             let on_step = q * step;
             if on_step != i.size {
                 return Err(LiveCalcError::QuantityNotOnStep(i.size, step));
@@ -125,7 +150,9 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
     }
 
     let stop_distance_price = (i.entry_price - i.stop_price).abs();
-    if stop_distance_price.is_zero() { return Err(LiveCalcError::InvalidStop); }
+    if stop_distance_price.is_zero() {
+        return Err(LiveCalcError::InvalidStop);
+    }
 
     // --- Direction validation for TP ---
     let is_long = match i.take_profit {
@@ -155,7 +182,9 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
         CalcMode::Simple => {
             let v = i.value_per_price_unit.ok_or(LiveCalcError::MissingSimple)?;
             let m = i.margin_usd.ok_or(LiveCalcError::MissingSimple)?;
-            if v <= Decimal::ZERO || m <= Decimal::ZERO { return Err(LiveCalcError::InvalidInput); }
+            if v <= Decimal::ZERO || m <= Decimal::ZERO {
+                return Err(LiveCalcError::InvalidInput);
+            }
             // In simple mode we do not know leverage; margin is what the broker reports.
             // Notional is intentionally marked as unavailable (returned as margin for
             // reference only).
@@ -166,7 +195,11 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
             let vpp = i.value_per_point.ok_or(LiveCalcError::MissingAdvanced)?;
             let ps = i.point_size.ok_or(LiveCalcError::MissingAdvanced)?;
             let lev = i.leverage.ok_or(LiveCalcError::MissingAdvanced)?;
-            if contract <= Decimal::ZERO || vpp <= Decimal::ZERO || ps <= Decimal::ZERO || lev <= Decimal::ZERO {
+            if contract <= Decimal::ZERO
+                || vpp <= Decimal::ZERO
+                || ps <= Decimal::ZERO
+                || lev <= Decimal::ZERO
+            {
                 return Err(LiveCalcError::InvalidInput);
             }
             let v = vpp / ps;
@@ -211,13 +244,21 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
             let per_lot = tp_dist * value_per_price_unit;
             let total = per_lot * i.size;
             let net = total - total_costs;
-            let rr = if net_risk.is_zero() { None } else { Some(net / net_risk) };
+            let rr = if net_risk.is_zero() {
+                None
+            } else {
+                Some(net / net_risk)
+            };
             (Some(per_lot), Some(total), Some(net), rr)
         }
         None => (None, None, None, None),
     };
 
-    let risk_per_lot = if i.size.is_zero() { Decimal::ZERO } else { gross_risk / i.size };
+    let risk_per_lot = if i.size.is_zero() {
+        Decimal::ZERO
+    } else {
+        gross_risk / i.size
+    };
 
     let free_margin_after = i.balance - required_margin;
     let margin_used_pct = (required_margin / i.balance) * Decimal::from(100);
@@ -233,7 +274,8 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
                 if !cap.is_zero() && net_risk_pct > cap {
                     warnings.push(format!(
                         "This trade risks {}% (net) of your account, above your {}% limit.",
-                        round2(net_risk_pct), round2(cap)
+                        round2(net_risk_pct),
+                        round2(cap)
                     ));
                     verdict = "danger";
                 }
@@ -245,7 +287,8 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
                 if !fixed.is_zero() && net_risk > fixed {
                     warnings.push(format!(
                         "This trade risks {} (net), above your fixed limit of {}.",
-                        round2(net_risk), round2(fixed)
+                        round2(net_risk),
+                        round2(fixed)
                     ));
                     verdict = "danger";
                 }
@@ -259,7 +302,8 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
     if !required_margin.is_zero() && required_margin > i.balance {
         warnings.push(format!(
             "Margin required ({}) is larger than your balance ({}).",
-            round2(required_margin), round2(i.balance)
+            round2(required_margin),
+            round2(i.balance)
         ));
         verdict = "danger";
     } else if !required_margin.is_zero() && free_margin_after < i.balance * Decimal::new(2, 1) {
@@ -267,7 +311,9 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
             "Only {} free margin left after opening this position.",
             round2(free_margin_after)
         ));
-        if verdict == "ok" { verdict = "warn"; }
+        if verdict == "ok" {
+            verdict = "warn";
+        }
     }
 
     // Spread cost warning in Simple mode
@@ -275,7 +321,9 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
         warnings.push(
             "Spread cost not included because Simple mode lacks point_size. Use Advanced mode to include spread.".into()
         );
-        if verdict == "ok" { verdict = "warn"; }
+        if verdict == "ok" {
+            verdict = "warn";
+        }
     }
 
     // R:R warning
@@ -285,7 +333,9 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
                 "Planned R:R is 1 : {} — net reward is smaller than net risk.",
                 round2(rr)
             ));
-            if verdict == "ok" { verdict = "warn"; }
+            if verdict == "ok" {
+                verdict = "warn";
+            }
         }
     }
 
@@ -312,7 +362,6 @@ pub fn calculate(i: &LiveCalcInput) -> Result<LiveCalcResult, LiveCalcError> {
     })
 }
 
-
 // ============================================================
 // LIVE TRADE LAB — interactive calculators
 // ============================================================
@@ -324,8 +373,8 @@ pub struct PartialCloseInput {
     pub size: Decimal,
     pub entry_price: Decimal,
     pub current_price: Decimal,
-    pub value_per_price_unit: Decimal,   // $ per 1.0 price unit for 1.0 size
-    pub close_fraction: Decimal,          // 0.5 = close half
+    pub value_per_price_unit: Decimal, // $ per 1.0 price unit for 1.0 size
+    pub close_fraction: Decimal,       // 0.5 = close half
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -333,18 +382,26 @@ pub struct PartialCloseResult {
     pub locked_profit: Decimal,
     pub remaining_size: Decimal,
     pub remaining_potential_per_1unit: Decimal,
-    pub be_price_after: Decimal,          // price where remaining is at breakeven vs original entry
+    pub be_price_after: Decimal, // price where remaining is at breakeven vs original entry
 }
 
 pub fn partial_close(i: &PartialCloseInput) -> Result<PartialCloseResult, LiveCalcError> {
-    if i.size <= Decimal::ZERO { return Err(LiveCalcError::InvalidSize); }
-    if i.value_per_price_unit <= Decimal::ZERO { return Err(LiveCalcError::InvalidInput); }
+    if i.size <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidSize);
+    }
+    if i.value_per_price_unit <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidInput);
+    }
     if i.close_fraction <= Decimal::ZERO || i.close_fraction > Decimal::ONE {
         return Err(LiveCalcError::InvalidInput);
     }
 
     let move_amt = (i.current_price - i.entry_price).abs();
-    let direction = if i.current_price >= i.entry_price { Decimal::ONE } else { -Decimal::ONE };
+    let direction = if i.current_price >= i.entry_price {
+        Decimal::ONE
+    } else {
+        -Decimal::ONE
+    };
     let closed_size = i.size * i.close_fraction;
     let locked_profit = move_amt * i.value_per_price_unit * closed_size;
     let remaining_size = i.size - closed_size;
@@ -372,14 +429,14 @@ pub fn partial_close(i: &PartialCloseInput) -> Result<PartialCloseResult, LiveCa
 pub struct MartingaleCheckInput {
     pub current_size: Decimal,
     pub last_losing_size: Option<Decimal>,
-    pub last_losing_was_recent: bool,   // within last 24h / this session
+    pub last_losing_was_recent: bool, // within last 24h / this session
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MartingaleCheckResult {
     pub multiplier: Option<Decimal>,
     pub is_risky: bool,
-    pub verdict: String,                // "ok" | "warn" | "danger"
+    pub verdict: String, // "ok" | "warn" | "danger"
     pub message: String,
 }
 
@@ -410,7 +467,13 @@ pub fn martingale_check(i: &MartingaleCheckInput) -> MartingaleCheckResult {
         };
     }
     let (verdict, message) = if mult >= Decimal::from(2) {
-        ("danger", format!("Current size is {}× the last losing size. This is a classic Martingale pattern.", round2(mult)))
+        (
+            "danger",
+            format!(
+                "Current size is {}× the last losing size. This is a classic Martingale pattern.",
+                round2(mult)
+            ),
+        )
     } else if mult > Decimal::new(15, 1) {
         ("warn", format!("Current size is {}× the last losing size. Increasing size after a loss raises ruin risk.", round2(mult)))
     } else {
@@ -430,8 +493,8 @@ pub fn martingale_check(i: &MartingaleCheckInput) -> MartingaleCheckResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BreakEvenInput {
     pub entry_price: Decimal,
-    pub side: String,                  // "long" | "short"
-    pub locked_profit: Decimal,        // $ already banked from partial close
+    pub side: String,           // "long" | "short"
+    pub locked_profit: Decimal, // $ already banked from partial close
     pub remaining_size: Decimal,
     pub value_per_price_unit: Decimal, // $ per 1.0 price unit for 1.0 size
 }
@@ -443,11 +506,17 @@ pub struct BreakEvenResult {
 }
 
 pub fn break_even(i: &BreakEvenInput) -> Result<BreakEvenResult, LiveCalcError> {
-    if i.remaining_size <= Decimal::ZERO { return Err(LiveCalcError::InvalidSize); }
-    if i.value_per_price_unit <= Decimal::ZERO { return Err(LiveCalcError::InvalidInput); }
+    if i.remaining_size <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidSize);
+    }
+    if i.value_per_price_unit <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidInput);
+    }
     let is_long = i.side == "long";
     let per_unit_remaining = i.value_per_price_unit * i.remaining_size;
-    if per_unit_remaining.is_zero() { return Err(LiveCalcError::InvalidInput); }
+    if per_unit_remaining.is_zero() {
+        return Err(LiveCalcError::InvalidInput);
+    }
     let be_move = i.locked_profit / per_unit_remaining;
     let be_price = if is_long {
         i.entry_price - be_move
@@ -464,7 +533,7 @@ pub fn break_even(i: &BreakEvenInput) -> Result<BreakEvenResult, LiveCalcError> 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SizeFromRiskInput {
     pub balance: Decimal,
-    pub risk_pct: Decimal,             // 1 = 1%
+    pub risk_pct: Decimal, // 1 = 1%
     pub entry_price: Decimal,
     pub stop_price: Decimal,
     pub value_per_price_unit: Decimal, // $ per 1.0 price unit for 1.0 size
@@ -478,14 +547,24 @@ pub struct SizeFromRiskResult {
 }
 
 pub fn size_from_risk(i: &SizeFromRiskInput) -> Result<SizeFromRiskResult, LiveCalcError> {
-    if i.balance <= Decimal::ZERO { return Err(LiveCalcError::InvalidBalance); }
-    if i.risk_pct <= Decimal::ZERO { return Err(LiveCalcError::InvalidInput); }
-    if i.value_per_price_unit <= Decimal::ZERO { return Err(LiveCalcError::InvalidInput); }
+    if i.balance <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidBalance);
+    }
+    if i.risk_pct <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidInput);
+    }
+    if i.value_per_price_unit <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidInput);
+    }
     let stop_dist = (i.entry_price - i.stop_price).abs();
-    if stop_dist.is_zero() { return Err(LiveCalcError::InvalidStop); }
+    if stop_dist.is_zero() {
+        return Err(LiveCalcError::InvalidStop);
+    }
     let risk_amount = i.balance * (i.risk_pct / Decimal::from(100));
     let denom = stop_dist * i.value_per_price_unit;
-    if denom.is_zero() { return Err(LiveCalcError::InvalidInput); }
+    if denom.is_zero() {
+        return Err(LiveCalcError::InvalidInput);
+    }
     let size = risk_amount / denom;
     Ok(SizeFromRiskResult {
         risk_amount: round2(risk_amount),
@@ -493,7 +572,6 @@ pub fn size_from_risk(i: &SizeFromRiskInput) -> Result<SizeFromRiskResult, LiveC
         stop_distance: round2(stop_dist),
     })
 }
-
 
 // ============================================================
 // ASSISTANT — holistic advice for a single setup
@@ -507,13 +585,13 @@ pub struct AssistantInput {
     pub take_profit: Option<Decimal>,
     pub balance: Decimal,
     pub value_per_price_unit: Decimal,
-    pub max_risk_pct: Decimal,          // user's per-trade cap
+    pub max_risk_pct: Decimal, // user's per-trade cap
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Advice {
-    pub kind: String,                    // "risk" | "size" | "rr" | "partial" | "ok"
-    pub severity: String,                // "info" | "warn" | "danger"
+    pub kind: String,     // "risk" | "size" | "rr" | "partial" | "ok"
+    pub severity: String, // "info" | "warn" | "danger"
     pub message: String,
     /// Optional suggested value the user can apply (e.g. suggested size).
     pub suggested_size: Option<Decimal>,
@@ -521,7 +599,7 @@ pub struct Advice {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssistantResult {
-    pub verdict: String,                 // "ok" | "warn" | "danger"
+    pub verdict: String, // "ok" | "warn" | "danger"
     pub headline: String,
     pub current_risk_pct: Decimal,
     pub suggested_size: Option<Decimal>,
@@ -529,11 +607,17 @@ pub struct AssistantResult {
 }
 
 pub fn assistant(a: &AssistantInput) -> Result<AssistantResult, LiveCalcError> {
-    if a.balance <= Decimal::ZERO { return Err(LiveCalcError::InvalidBalance); }
-    if a.value_per_price_unit <= Decimal::ZERO { return Err(LiveCalcError::InvalidInput); }
+    if a.balance <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidBalance);
+    }
+    if a.value_per_price_unit <= Decimal::ZERO {
+        return Err(LiveCalcError::InvalidInput);
+    }
 
     let stop_dist = (a.entry_price - a.stop_price).abs();
-    if stop_dist.is_zero() { return Err(LiveCalcError::InvalidStop); }
+    if stop_dist.is_zero() {
+        return Err(LiveCalcError::InvalidStop);
+    }
 
     let risk_amount = stop_dist * a.value_per_price_unit * a.size;
     let risk_pct = (risk_amount / a.balance) * Decimal::from(100);
@@ -541,7 +625,11 @@ pub fn assistant(a: &AssistantInput) -> Result<AssistantResult, LiveCalcError> {
     // Suggested size that would exactly meet max_risk_pct
     let target_risk_amount = a.balance * (a.max_risk_pct / Decimal::from(100));
     let denom = stop_dist * a.value_per_price_unit;
-    let suggested_size = if denom.is_zero() { None } else { Some(round2(target_risk_amount / denom)) };
+    let suggested_size = if denom.is_zero() {
+        None
+    } else {
+        Some(round2(target_risk_amount / denom))
+    };
 
     let mut advices: Vec<Advice> = Vec::new();
     let mut verdict = "ok";
@@ -549,13 +637,19 @@ pub fn assistant(a: &AssistantInput) -> Result<AssistantResult, LiveCalcError> {
 
     if a.max_risk_pct > Decimal::ZERO && risk_pct > a.max_risk_pct {
         verdict = "danger";
-        headline = format!("Risking {}% — above your {}% cap", round2(risk_pct), round2(a.max_risk_pct));
+        headline = format!(
+            "Risking {}% — above your {}% cap",
+            round2(risk_pct),
+            round2(a.max_risk_pct)
+        );
         advices.push(Advice {
             kind: "risk".into(),
             severity: "danger".into(),
             message: format!(
                 "This setup risks ${} which is {}% of your balance. Your per-trade cap is {}%.",
-                round2(risk_amount), round2(risk_pct), round2(a.max_risk_pct)
+                round2(risk_amount),
+                round2(risk_pct),
+                round2(a.max_risk_pct)
             ),
             suggested_size: None,
         });
@@ -563,7 +657,11 @@ pub fn assistant(a: &AssistantInput) -> Result<AssistantResult, LiveCalcError> {
             advices.push(Advice {
                 kind: "size".into(),
                 severity: "info".into(),
-                message: format!("To respect your {}% cap, use {} lots instead.", round2(a.max_risk_pct), s),
+                message: format!(
+                    "To respect your {}% cap, use {} lots instead.",
+                    round2(a.max_risk_pct),
+                    s
+                ),
                 suggested_size: Some(s),
             });
         }
@@ -575,7 +673,8 @@ pub fn assistant(a: &AssistantInput) -> Result<AssistantResult, LiveCalcError> {
             severity: "warn".into(),
             message: format!(
                 "Risk is {}% of balance — within cap but close to {}%.",
-                round2(risk_pct), round2(a.max_risk_pct)
+                round2(risk_pct),
+                round2(a.max_risk_pct)
             ),
             suggested_size: None,
         });
@@ -588,7 +687,9 @@ pub fn assistant(a: &AssistantInput) -> Result<AssistantResult, LiveCalcError> {
         if !risk_amount.is_zero() {
             let rr = reward / risk_amount;
             if rr < Decimal::ONE {
-                if verdict == "ok" { verdict = "warn"; }
+                if verdict == "ok" {
+                    verdict = "warn";
+                }
                 advices.push(Advice {
                     kind: "rr".into(),
                     severity: "warn".into(),
@@ -605,10 +706,7 @@ pub fn assistant(a: &AssistantInput) -> Result<AssistantResult, LiveCalcError> {
                 advices.push(Advice {
                     kind: "rr".into(),
                     severity: "info".into(),
-                    message: format!(
-                        "Planned R:R is 1 : {} — favorable.",
-                        round2(rr)
-                    ),
+                    message: format!("Planned R:R is 1 : {} — favorable.", round2(rr)),
                     suggested_size: None,
                 });
             }
@@ -624,7 +722,11 @@ pub fn assistant(a: &AssistantInput) -> Result<AssistantResult, LiveCalcError> {
 
     // Partial-close advice (if in profit and something to lock)
     if let Some(tp) = a.take_profit {
-        let direction = if tp > a.entry_price { Decimal::ONE } else { -Decimal::ONE };
+        let direction = if tp > a.entry_price {
+            Decimal::ONE
+        } else {
+            -Decimal::ONE
+        };
         let halfway = a.entry_price + direction * ((tp - a.entry_price) / Decimal::from(2));
         advices.push(Advice {
             kind: "partial".into(),
@@ -655,7 +757,6 @@ pub fn assistant(a: &AssistantInput) -> Result<AssistantResult, LiveCalcError> {
         advices,
     })
 }
-
 
 // ============================================================
 // PORTFOLIO ASSISTANT
@@ -725,8 +826,8 @@ pub fn portfolio_risk(i: &PortfolioRiskInput) -> PortfolioRiskResult {
 
     let positions = i.trades.len() as i64;
     let positions_limit_hit = i.max_open_positions > 0 && positions >= i.max_open_positions;
-    let portfolio_limit_hit = i.max_portfolio_risk_pct > Decimal::ZERO
-        && total_risk_pct > i.max_portfolio_risk_pct;
+    let portfolio_limit_hit =
+        i.max_portfolio_risk_pct > Decimal::ZERO && total_risk_pct > i.max_portfolio_risk_pct;
 
     let mut warnings: Vec<String> = Vec::new();
     let mut verdict = "ok";
@@ -745,12 +846,15 @@ pub fn portfolio_risk(i: &PortfolioRiskInput) -> PortfolioRiskResult {
         ));
         verdict = "danger";
     } else if i.max_portfolio_risk_pct > Decimal::ZERO
-        && total_risk_pct > i.max_portfolio_risk_pct * Decimal::new(7, 1) {
+        && total_risk_pct > i.max_portfolio_risk_pct * Decimal::new(7, 1)
+    {
         warnings.push(format!(
             "Total risk is {}% — approaching your {}% portfolio cap.",
             total_risk_pct, i.max_portfolio_risk_pct
         ));
-        if verdict == "ok" { verdict = "warn"; }
+        if verdict == "ok" {
+            verdict = "warn";
+        }
     }
 
     let mut advices: Vec<String> = Vec::new();
@@ -763,13 +867,16 @@ pub fn portfolio_risk(i: &PortfolioRiskInput) -> PortfolioRiskResult {
             suggested_trim_pct = Some(round2(trim_pct));
             advices.push(format!(
                 "To respect your {}% portfolio cap, close or trim about {}% of total exposure.",
-                round2(i.max_portfolio_risk_pct), round2(trim_pct)
+                round2(i.max_portfolio_risk_pct),
+                round2(trim_pct)
             ));
         }
     }
 
     if !positions_limit_hit && !portfolio_limit_hit && !total_risk.is_zero() {
-        advices.push("Portfolio risk is within limits. Keep monitoring before adding new positions.".into());
+        advices.push(
+            "Portfolio risk is within limits. Keep monitoring before adding new positions.".into(),
+        );
     }
 
     if i.max_portfolio_risk_pct.is_zero() {
@@ -785,7 +892,10 @@ pub fn portfolio_risk(i: &PortfolioRiskInput) -> PortfolioRiskResult {
 
     let zero_risk = per_trade.iter().filter(|t| t.risk.is_zero()).count();
     if zero_risk > 0 {
-        advices.push(format!("{} positions have zero risk — check their stops.", zero_risk));
+        advices.push(format!(
+            "{} positions have zero risk — check their stops.",
+            zero_risk
+        ));
     }
 
     PortfolioRiskResult {
@@ -926,7 +1036,7 @@ mod tests {
     fn fixed_risk_cap_warning() {
         let mut i = simple();
         i.risk_mode = Some(RiskMode::Fixed);
-        i.fixed_risk_amount = Some(dec!(300));  // 500 net risk > 300 → danger
+        i.fixed_risk_amount = Some(dec!(300)); // 500 net risk > 300 → danger
         i.max_risk_per_trade_pct = None;
         let r = calculate(&i).unwrap();
         assert_eq!(r.verdict, "danger");
@@ -942,7 +1052,10 @@ mod tests {
         let mut i = simple();
         // long (stop below entry) but TP below entry
         i.take_profit = Some(dec!(1.0900));
-        assert!(matches!(calculate(&i), Err(LiveCalcError::InvalidTpDirection(_))));
+        assert!(matches!(
+            calculate(&i),
+            Err(LiveCalcError::InvalidTpDirection(_))
+        ));
     }
 
     #[test]
@@ -952,7 +1065,10 @@ mod tests {
         i.entry_price = dec!(1.1000);
         i.stop_price = dec!(1.1050);
         i.take_profit = Some(dec!(1.1200));
-        assert!(matches!(calculate(&i), Err(LiveCalcError::InvalidTpDirection(_))));
+        assert!(matches!(
+            calculate(&i),
+            Err(LiveCalcError::InvalidTpDirection(_))
+        ));
     }
 
     // ============================================================
@@ -964,7 +1080,10 @@ mod tests {
         let mut i = simple();
         i.size = dec!(0.05);
         i.min_quantity = Some(dec!(0.1));
-        assert!(matches!(calculate(&i), Err(LiveCalcError::QuantityBelowMin(_, _))));
+        assert!(matches!(
+            calculate(&i),
+            Err(LiveCalcError::QuantityBelowMin(_, _))
+        ));
     }
 
     #[test]
@@ -972,7 +1091,10 @@ mod tests {
         let mut i = simple();
         i.size = dec!(10);
         i.max_quantity = Some(dec!(5));
-        assert!(matches!(calculate(&i), Err(LiveCalcError::QuantityAboveMax(_, _))));
+        assert!(matches!(
+            calculate(&i),
+            Err(LiveCalcError::QuantityAboveMax(_, _))
+        ));
     }
 
     #[test]
@@ -980,7 +1102,10 @@ mod tests {
         let mut i = simple();
         i.size = dec!(0.55);
         i.quantity_step = Some(dec!(0.1));
-        assert!(matches!(calculate(&i), Err(LiveCalcError::QuantityNotOnStep(_, _))));
+        assert!(matches!(
+            calculate(&i),
+            Err(LiveCalcError::QuantityNotOnStep(_, _))
+        ));
     }
 
     #[test]
@@ -1010,9 +1135,13 @@ mod tests {
     #[test]
     fn partial_close_locks_profit() {
         let r = partial_close(&PartialCloseInput {
-            size: dec!(1), entry_price: dec!(1.10), current_price: dec!(1.12),
-            value_per_price_unit: dec!(100000), close_fraction: dec!(0.5),
-        }).unwrap();
+            size: dec!(1),
+            entry_price: dec!(1.10),
+            current_price: dec!(1.12),
+            value_per_price_unit: dec!(100000),
+            close_fraction: dec!(0.5),
+        })
+        .unwrap();
         assert_eq!(r.locked_profit, dec!(1000));
         assert_eq!(r.remaining_size, dec!(0.5));
     }
@@ -1024,7 +1153,8 @@ mod tests {
     #[test]
     fn martingale_detects_doubling() {
         let r = martingale_check(&MartingaleCheckInput {
-            current_size: dec!(2), last_losing_size: Some(dec!(1)),
+            current_size: dec!(2),
+            last_losing_size: Some(dec!(1)),
             last_losing_was_recent: true,
         });
         assert_eq!(r.verdict, "danger");
@@ -1034,7 +1164,8 @@ mod tests {
     #[test]
     fn martingale_ok_when_not_increasing() {
         let r = martingale_check(&MartingaleCheckInput {
-            current_size: dec!(1), last_losing_size: Some(dec!(1)),
+            current_size: dec!(1),
+            last_losing_size: Some(dec!(1)),
             last_losing_was_recent: true,
         });
         assert_eq!(r.verdict, "ok");
@@ -1047,10 +1178,13 @@ mod tests {
     #[test]
     fn break_even_moves_stop_favorably() {
         let r = break_even(&BreakEvenInput {
-            entry_price: dec!(1.10), side: "long".into(),
-            locked_profit: dec!(1000), remaining_size: dec!(0.5),
+            entry_price: dec!(1.10),
+            side: "long".into(),
+            locked_profit: dec!(1000),
+            remaining_size: dec!(0.5),
             value_per_price_unit: dec!(100000),
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(r.be_price, dec!(1.08));
     }
 
@@ -1061,10 +1195,13 @@ mod tests {
     #[test]
     fn calc_size_from_risk() {
         let r = size_from_risk(&SizeFromRiskInput {
-            balance: dec!(10000), risk_pct: dec!(1),
-            entry_price: dec!(1.10), stop_price: dec!(1.09),
+            balance: dec!(10000),
+            risk_pct: dec!(1),
+            entry_price: dec!(1.10),
+            stop_price: dec!(1.09),
             value_per_price_unit: dec!(100000),
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(r.risk_amount, dec!(100));
         assert_eq!(r.size_lots, dec!(0.10));
     }
@@ -1087,8 +1224,10 @@ mod tests {
     #[test]
     fn empty_portfolio() {
         let r = portfolio_risk(&PortfolioRiskInput {
-            trades: vec![], balance: dec!(10000),
-            max_portfolio_risk_pct: dec!(5), max_open_positions: 3,
+            trades: vec![],
+            balance: dec!(10000),
+            max_portfolio_risk_pct: dec!(5),
+            max_open_positions: 3,
         });
         assert_eq!(r.positions, 0);
         assert_eq!(r.total_risk, Decimal::ZERO);

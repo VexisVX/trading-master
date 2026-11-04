@@ -3,34 +3,62 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum Side { Long, Short }
+pub enum Side {
+    Long,
+    Short,
+}
 
 impl Side {
     pub fn as_str(&self) -> &'static str {
-        match self { Side::Long => "long", Side::Short => "short" }
+        match self {
+            Side::Long => "long",
+            Side::Short => "short",
+        }
     }
     pub fn from_str(s: &str) -> Option<Self> {
-        match s { "long" => Some(Side::Long), "short" => Some(Side::Short), _ => None }
+        match s {
+            "long" => Some(Side::Long),
+            "short" => Some(Side::Short),
+            _ => None,
+        }
     }
-    pub fn is_long(&self) -> bool { matches!(self, Side::Long) }
+    pub fn is_long(&self) -> bool {
+        matches!(self, Side::Long)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum TradeStatus { Open, Closed }
+pub enum TradeStatus {
+    Open,
+    Closed,
+}
 
 impl TradeStatus {
     pub fn as_str(&self) -> &'static str {
-        match self { TradeStatus::Open => "open", TradeStatus::Closed => "closed" }
+        match self {
+            TradeStatus::Open => "open",
+            TradeStatus::Closed => "closed",
+        }
     }
     pub fn from_str(s: &str) -> Option<Self> {
-        match s { "open" => Some(TradeStatus::Open), "closed" => Some(TradeStatus::Closed), _ => None }
+        match s {
+            "open" => Some(TradeStatus::Open),
+            "closed" => Some(TradeStatus::Closed),
+            _ => None,
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum TradeOutcome { Open, TpHit, SlHit, ManualClose, Breakeven }
+pub enum TradeOutcome {
+    Open,
+    TpHit,
+    SlHit,
+    ManualClose,
+    Breakeven,
+}
 
 impl TradeOutcome {
     pub fn as_str(&self) -> &'static str {
@@ -56,27 +84,50 @@ impl TradeOutcome {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum SizeType { Lots, Units, Money }
+pub enum SizeType {
+    Lots,
+    Units,
+    Money,
+}
 
 impl SizeType {
     pub fn as_str(&self) -> &'static str {
-        match self { SizeType::Lots => "lots", SizeType::Units => "units", SizeType::Money => "money" }
+        match self {
+            SizeType::Lots => "lots",
+            SizeType::Units => "units",
+            SizeType::Money => "money",
+        }
     }
     pub fn from_str(s: &str) -> Option<Self> {
-        match s { "lots" => Some(SizeType::Lots), "units" => Some(SizeType::Units), "money" => Some(SizeType::Money), _ => None }
+        match s {
+            "lots" => Some(SizeType::Lots),
+            "units" => Some(SizeType::Units),
+            "money" => Some(SizeType::Money),
+            _ => None,
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum LegKind { Entry, Exit }
+pub enum LegKind {
+    Entry,
+    Exit,
+}
 
 impl LegKind {
     pub fn as_str(&self) -> &'static str {
-        match self { LegKind::Entry => "entry", LegKind::Exit => "exit" }
+        match self {
+            LegKind::Entry => "entry",
+            LegKind::Exit => "exit",
+        }
     }
     pub fn from_str(s: &str) -> Option<Self> {
-        match s { "entry" => Some(LegKind::Entry), "exit" => Some(LegKind::Exit), _ => None }
+        match s {
+            "entry" => Some(LegKind::Entry),
+            "exit" => Some(LegKind::Exit),
+            _ => None,
+        }
     }
 }
 
@@ -221,8 +272,8 @@ pub fn empty_trade() -> Trade {
         current_price_updated_at: None,
         current_price_source: None,
         current_stop: None,
-    }}
-
+    }
+}
 
 // ============================================================
 // PHASE 2.2 — active stop + price source validation

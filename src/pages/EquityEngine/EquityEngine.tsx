@@ -103,7 +103,7 @@ export function EquityEngine() {
           // ★ Check for snapshot specific to THIS account
           const existing = await getLatestSnapshot(activeId);
           if (!existing) {
-            await autoSnapshotFromTrades(activeId).catch(() => {});
+            // DISABLED (loop): // DISABLED: await autoSnapshotFromTrades(activeId).catch(() => {});
           }
         }
       } catch (e) {
@@ -114,7 +114,7 @@ export function EquityEngine() {
       await loadAll(finalId ?? undefined);
       setLoading(false);
     })();
-  }, [loadAll]);
+  }, []);  // ★ empty deps: run only on mount, not on loadAll change
 
   async function handleSelectAccount(id: number) {
     setSelectedAccountId(id);
@@ -156,7 +156,7 @@ export function EquityEngine() {
         localStorage.setItem(LS_KEY, String(detail.id));
         setRefreshing(true);
         try {
-          await autoSnapshotFromTrades(detail.id);
+          // DISABLED (loop): // DISABLED: await autoSnapshotFromTrades(detail.id);
           await loadAll(detail.id);
           setRefreshKey((k) => k + 1);
         } catch (err) {
@@ -250,12 +250,12 @@ export function EquityEngine() {
         onOpenWhyThisSize={setWhyResult}
       />
 
-      <RecentDecisionsCard
+        <InstrumentsCard />
+        <CashFlowCard accountId={selectedAccountId ?? 1} />
+<RecentDecisionsCard
         decisions={decisions}
         onViewAll={() => setShowAll(true)}
       />
-        <InstrumentsCard />
-        <CashFlowCard accountId={selectedAccountId ?? 1} />
 
       {whyResult && (
         <WhyThisSizeModal

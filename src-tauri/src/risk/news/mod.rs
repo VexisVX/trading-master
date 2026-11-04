@@ -29,10 +29,10 @@ pub struct NewsEntity {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewsQuery {
-    pub symbols: Option<String>,     // comma-separated
+    pub symbols: Option<String>, // comma-separated
     pub search: Option<String>,
-    pub limit: Option<u32>,           // max 3 on free tier
-    pub language: Option<String>,     // "en"
+    pub limit: Option<u32>,       // max 3 on free tier
+    pub language: Option<String>, // "en"
     pub min_sentiment: Option<f64>,
     pub max_sentiment: Option<f64>,
 }

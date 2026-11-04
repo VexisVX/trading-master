@@ -111,6 +111,9 @@ mod tests {
 
     #[test]
     fn non_positive_initial_rejected() {
-        assert_eq!(compute_drawdown(&[dec!(0), dec!(10)]), Err(DrawdownError::NonPositiveInitial));
+        assert_eq!(
+            compute_drawdown(&[dec!(0), dec!(10)]),
+            Err(DrawdownError::NonPositiveInitial)
+        );
     }
 }

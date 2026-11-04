@@ -73,9 +73,9 @@ fn csv_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::trade::*;
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
-    use crate::domain::trade::*;
 
     fn sample_closed_trade() -> Trade {
         let mut t = empty_trade();
@@ -97,14 +97,20 @@ mod tests {
         t.updated_at = "2026-10-20T15:00:00Z".into();
         t.legs = vec![
             TradeLeg {
-                id: 1, kind: LegKind::Entry,
-                price: dec!(1.10), quantity: dec!(1),
-                executed_at: "t".into(), cost_per_unit: Decimal::ZERO,
+                id: 1,
+                kind: LegKind::Entry,
+                price: dec!(1.10),
+                quantity: dec!(1),
+                executed_at: "t".into(),
+                cost_per_unit: Decimal::ZERO,
             },
             TradeLeg {
-                id: 2, kind: LegKind::Exit,
-                price: dec!(1.12), quantity: dec!(1),
-                executed_at: "t".into(), cost_per_unit: Decimal::ZERO,
+                id: 2,
+                kind: LegKind::Exit,
+                price: dec!(1.12),
+                quantity: dec!(1),
+                executed_at: "t".into(),
+                cost_per_unit: Decimal::ZERO,
             },
         ];
         t.tags = vec!["A".into(), "B".into()];
@@ -136,4 +142,3 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 }
-

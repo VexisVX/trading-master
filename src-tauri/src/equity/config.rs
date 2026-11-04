@@ -5,8 +5,8 @@
 //! m_dd_1..4, m_loss_table, n_max, mu_max, recovery_target) are silently
 //! ignored by serde when present in old JSON configs.
 
-use rust_decimal::Decimal;
 use rust_decimal::prelude::FromStr;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,17 +108,39 @@ pub struct EquityConfig {
     pub recovery_target: String,
 }
 
-fn def_profit_activation() -> String { "0.05".into() }
-fn def_profit_full() -> String { "0.10".into() }
-fn def_max_retention() -> String { "0.40".into() }
-fn def_trailing_dd() -> String { "0.10".into() }
-fn def_alpha() -> String { "0.5".into() }
-fn def_exec_buffer() -> String { "0.001".into() }
-fn def_recovery_probe() -> String { "0.25".into() }
-fn def_max_age() -> i64 { 24 }
-fn def_max_price_age() -> i64 { 60 }
-fn def_reset_tz() -> String { "UTC".into() }
-fn def_reset_time() -> String { "00:00".into() }
+fn def_profit_activation() -> String {
+    "0.05".into()
+}
+fn def_profit_full() -> String {
+    "0.10".into()
+}
+fn def_max_retention() -> String {
+    "0.40".into()
+}
+fn def_trailing_dd() -> String {
+    "0.10".into()
+}
+fn def_alpha() -> String {
+    "0.5".into()
+}
+fn def_exec_buffer() -> String {
+    "0.001".into()
+}
+fn def_recovery_probe() -> String {
+    "0.25".into()
+}
+fn def_max_age() -> i64 {
+    24
+}
+fn def_max_price_age() -> i64 {
+    60
+}
+fn def_reset_tz() -> String {
+    "UTC".into()
+}
+fn def_reset_time() -> String {
+    "00:00".into()
+}
 
 impl EquityConfig {
     pub fn default_v2() -> Self {
@@ -159,11 +181,15 @@ impl EquityConfig {
     }
 
     /// Alias so old callers `EquityConfig::default_v1()` keep working.
-    pub fn default_v1() -> Self { Self::default_v2() }
+    pub fn default_v1() -> Self {
+        Self::default_v2()
+    }
 
     pub fn validate(&self) -> Result<(), String> {
         let d = |s: &str, name: &str| -> Result<Decimal, String> {
-            if s.is_empty() { return Ok(Decimal::ZERO); }
+            if s.is_empty() {
+                return Ok(Decimal::ZERO);
+            }
             Decimal::from_str(s).map_err(|e| format!("{name}: {e}"))
         };
         let _ = d(&self.r0, "r0")?;
@@ -192,8 +218,12 @@ impl EquityConfig {
         if parts.len() != 2 {
             return Err("daily_reset_time must be HH:MM".into());
         }
-        let hh: u32 = parts[0].parse().map_err(|_| "daily_reset_time hour invalid".to_string())?;
-        let mm: u32 = parts[1].parse().map_err(|_| "daily_reset_time minute invalid".to_string())?;
+        let hh: u32 = parts[0]
+            .parse()
+            .map_err(|_| "daily_reset_time hour invalid".to_string())?;
+        let mm: u32 = parts[1]
+            .parse()
+            .map_err(|_| "daily_reset_time minute invalid".to_string())?;
         if hh > 23 || mm > 59 {
             return Err("daily_reset_time out of range".into());
         }

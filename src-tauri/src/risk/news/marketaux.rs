@@ -107,7 +107,11 @@ pub async fn fetch(api_key: &str, query: &NewsQuery) -> Result<Vec<NewsArticle>,
     }
     if !status.is_success() {
         let body = resp.text().await.unwrap_or_default();
-        return Err(NewsError::Network(format!("HTTP {} — {}", status, &body[..body.len().min(200)])));
+        return Err(NewsError::Network(format!(
+            "HTTP {} — {}",
+            status,
+            &body[..body.len().min(200)]
+        )));
     }
 
     let parsed: MarketauxResponse = resp
@@ -115,46 +119,64 @@ pub async fn fetch(api_key: &str, query: &NewsQuery) -> Result<Vec<NewsArticle>,
         .await
         .map_err(|e| NewsError::Parse(e.to_string()))?;
 
-    let articles = parsed.data.into_iter().map(|a| {
-        let avg_sentiment = if a.entities.is_empty() {
-            None
-        } else {
-            let sum: f64 = a.entities.iter().filter_map(|e| e.sentiment_score).sum();
-            let count = a.entities.iter().filter(|e| e.sentiment_score.is_some()).count();
-            if count > 0 { Some(sum / count as f64) } else { None }
-        };
+    let articles = parsed
+        .data
+        .into_iter()
+        .map(|a| {
+            let avg_sentiment = if a.entities.is_empty() {
+                None
+            } else {
+                let sum: f64 = a.entities.iter().filter_map(|e| e.sentiment_score).sum();
+                let count = a
+                    .entities
+                    .iter()
+                    .filter(|e| e.sentiment_score.is_some())
+                    .count();
+                if count > 0 {
+                    Some(sum / count as f64)
+                } else {
+                    None
+                }
+            };
 
-        NewsArticle {
-            uuid: a.uuid,
-            title: a.title,
-            snippet: a.snippet.or(a.description).unwrap_or_default(),
-            url: a.url,
-            source: a.source,
-            published_at: a.published_at,
-            entities: a.entities.into_iter().map(|e| NewsEntity {
-                symbol: e.symbol,
-                name: e.name,
-                sentiment_score: e.sentiment_score,
-                industry: e.industry,
-                country: e.country,
-            }).collect(),
-            sentiment: avg_sentiment,
-            image_url: a.image_url,
-        }
-    }).collect();
+            NewsArticle {
+                uuid: a.uuid,
+                title: a.title,
+                snippet: a.snippet.or(a.description).unwrap_or_default(),
+                url: a.url,
+                source: a.source,
+                published_at: a.published_at,
+                entities: a
+                    .entities
+                    .into_iter()
+                    .map(|e| NewsEntity {
+                        symbol: e.symbol,
+                        name: e.name,
+                        sentiment_score: e.sentiment_score,
+                        industry: e.industry,
+                        country: e.country,
+                    })
+                    .collect(),
+                sentiment: avg_sentiment,
+                image_url: a.image_url,
+            }
+        })
+        .collect();
 
     Ok(articles)
 }
 
 fn url_encode(s: &str) -> String {
-    s.chars().map(|c| match c {
-        ' ' => "%20".to_string(),
-        '&' => "%26".to_string(),
-        '=' => "%3D".to_string(),
-        '?' => "%3F".to_string(),
-        '#' => "%23".to_string(),
-        c => c.to_string(),
-    }).collect()
+    s.chars()
+        .map(|c| match c {
+            ' ' => "%20".to_string(),
+            '&' => "%26".to_string(),
+            '=' => "%3D".to_string(),
+            '?' => "%3F".to_string(),
+            '#' => "%23".to_string(),
+            c => c.to_string(),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -164,10 +186,17 @@ mod tests {
     #[test]
     fn missing_key_rejected() {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let r = rt.block_on(fetch("", &NewsQuery {
-            symbols: None, search: None, limit: None,
-            language: None, min_sentiment: None, max_sentiment: None,
-        }));
+        let r = rt.block_on(fetch(
+            "",
+            &NewsQuery {
+                symbols: None,
+                search: None,
+                limit: None,
+                language: None,
+                min_sentiment: None,
+                max_sentiment: None,
+            },
+        ));
         assert!(matches!(r, Err(NewsError::MissingKey)));
     }
 }

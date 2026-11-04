@@ -4,8 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use rust_decimal::Decimal;
 
 fn dec(s: &str) -> Result<Decimal, DbError> {
-    Decimal::from_str_exact(s)
-        .map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
+    Decimal::from_str_exact(s).map_err(|_| DbError::Sqlite(rusqlite::Error::InvalidQuery))
 }
 
 pub fn create_account(conn: &Connection, a: &NewAccount) -> Result<i64, DbError> {
@@ -21,7 +20,13 @@ pub fn create_account(conn: &Connection, a: &NewAccount) -> Result<i64, DbError>
     tx.execute(
         "INSERT INTO accounts (name, currency, initial_balance, is_active, kind, created_at)
          VALUES (?1,?2,?3,1,?4,?5)",
-        params![a.name.trim(), a.currency, a.initial_balance.to_string(), a.kind.as_str(), now],
+        params![
+            a.name.trim(),
+            a.currency,
+            a.initial_balance.to_string(),
+            a.kind.as_str(),
+            now
+        ],
     )?;
     let id = tx.last_insert_rowid();
 
@@ -44,16 +49,24 @@ pub fn create_account(conn: &Connection, a: &NewAccount) -> Result<i64, DbError>
 }
 
 pub fn get_account(conn: &Connection, id: i64) -> Result<Option<Account>, DbError> {
-    let row = conn.query_row(
-        "SELECT id, name, currency, initial_balance, is_active, kind, created_at
+    let row = conn
+        .query_row(
+            "SELECT id, name, currency, initial_balance, is_active, kind, created_at
          FROM accounts WHERE id=?1",
-        [id],
-        |r| Ok((
-            r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?,
-            r.get::<_, String>(3)?, r.get::<_, i64>(4)?, r.get::<_, String>(5)?,
-            r.get::<_, String>(6)?,
-        )),
-    ).optional()?;
+            [id],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, i64>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                ))
+            },
+        )
+        .optional()?;
 
     let Some((id, name, currency, bal, active, kind_s, created)) = row else {
         return Ok(None);
@@ -71,11 +84,14 @@ pub fn get_account(conn: &Connection, id: i64) -> Result<Option<Account>, DbErro
 
 pub fn list_accounts(conn: &Connection) -> Result<Vec<Account>, DbError> {
     let mut stmt = conn.prepare("SELECT id FROM accounts ORDER BY id ASC")?;
-    let ids: Vec<i64> = stmt.query_map([], |r| r.get(0))?
+    let ids: Vec<i64> = stmt
+        .query_map([], |r| r.get(0))?
         .collect::<Result<_, _>>()?;
     let mut out = Vec::with_capacity(ids.len());
     for id in ids {
-        if let Some(a) = get_account(conn, id)? { out.push(a); }
+        if let Some(a) = get_account(conn, id)? {
+            out.push(a);
+        }
     }
     Ok(out)
 }
@@ -97,7 +113,10 @@ pub fn delete_account(conn: &Connection, id: i64) -> Result<(), DbError> {
         [id],
     )?;
     tx.execute("DELETE FROM trade_attachments WHERE trade_id IN (SELECT id FROM trades WHERE account_id=?1)", [id])?;
-    tx.execute("DELETE FROM trade_tags WHERE trade_id IN (SELECT id FROM trades WHERE account_id=?1)", [id])?;
+    tx.execute(
+        "DELETE FROM trade_tags WHERE trade_id IN (SELECT id FROM trades WHERE account_id=?1)",
+        [id],
+    )?;
     tx.execute("DELETE FROM trades WHERE account_id=?1", [id])?;
     tx.execute("DELETE FROM prop_firm_rules WHERE account_id=?1", [id])?;
     tx.execute("DELETE FROM risk_settings WHERE account_id=?1", [id])?;
@@ -105,12 +124,16 @@ pub fn delete_account(conn: &Connection, id: i64) -> Result<(), DbError> {
 
     // Repoint active_account_id if needed.
     let active: Option<String> = tx
-        .query_row("SELECT value FROM app_meta WHERE key='active_account_id'", [], |r| r.get(0))
+        .query_row(
+            "SELECT value FROM app_meta WHERE key='active_account_id'",
+            [],
+            |r| r.get(0),
+        )
         .ok();
     if active.as_deref() == Some(&id.to_string()) {
-        let first: i64 = tx.query_row(
-            "SELECT id FROM accounts ORDER BY id LIMIT 1", [], |r| r.get(0),
-        )?;
+        let first: i64 = tx.query_row("SELECT id FROM accounts ORDER BY id LIMIT 1", [], |r| {
+            r.get(0)
+        })?;
         tx.execute(
             "INSERT INTO app_meta (key, value) VALUES ('active_account_id', ?1)
              ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -150,19 +173,38 @@ mod tests {
              CREATE TABLE trades (id INTEGER PRIMARY KEY, account_id INTEGER);
              CREATE TABLE trade_legs (id INTEGER PRIMARY KEY, trade_id INTEGER);
              CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT);",
-        ).unwrap();
+        )
+        .unwrap();
         conn
     }
 
     #[test]
     fn create_personal_seeds_only_risk_settings() {
         let conn = fresh_db();
-        let id = create_account(&conn, &NewAccount {
-            name: "My Personal".into(), currency: "USD".into(),
-            initial_balance: dec!(10000), kind: AccountKind::Personal,
-        }).unwrap();
-        let rs: i64 = conn.query_row("SELECT COUNT(*) FROM risk_settings WHERE account_id=?1", [id], |r| r.get(0)).unwrap();
-        let pf: i64 = conn.query_row("SELECT COUNT(*) FROM prop_firm_rules WHERE account_id=?1", [id], |r| r.get(0)).unwrap();
+        let id = create_account(
+            &conn,
+            &NewAccount {
+                name: "My Personal".into(),
+                currency: "USD".into(),
+                initial_balance: dec!(10000),
+                kind: AccountKind::Personal,
+            },
+        )
+        .unwrap();
+        let rs: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM risk_settings WHERE account_id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let pf: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM prop_firm_rules WHERE account_id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(rs, 1);
         assert_eq!(pf, 0);
     }
@@ -170,12 +212,30 @@ mod tests {
     #[test]
     fn create_prop_firm_seeds_both() {
         let conn = fresh_db();
-        let id = create_account(&conn, &NewAccount {
-            name: "FTMO".into(), currency: "USD".into(),
-            initial_balance: dec!(100000), kind: AccountKind::PropFirm,
-        }).unwrap();
-        let rs: i64 = conn.query_row("SELECT COUNT(*) FROM risk_settings WHERE account_id=?1", [id], |r| r.get(0)).unwrap();
-        let pf: i64 = conn.query_row("SELECT COUNT(*) FROM prop_firm_rules WHERE account_id=?1", [id], |r| r.get(0)).unwrap();
+        let id = create_account(
+            &conn,
+            &NewAccount {
+                name: "FTMO".into(),
+                currency: "USD".into(),
+                initial_balance: dec!(100000),
+                kind: AccountKind::PropFirm,
+            },
+        )
+        .unwrap();
+        let rs: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM risk_settings WHERE account_id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let pf: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM prop_firm_rules WHERE account_id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(rs, 1);
         assert_eq!(pf, 1);
     }
@@ -183,37 +243,67 @@ mod tests {
     #[test]
     fn reject_empty_name_and_zero_balance() {
         let conn = fresh_db();
-        assert!(create_account(&conn, &NewAccount {
-            name: " ".into(), currency: "USD".into(),
-            initial_balance: dec!(10000), kind: AccountKind::Personal,
-        }).is_err());
-        assert!(create_account(&conn, &NewAccount {
-            name: "X".into(), currency: "USD".into(),
-            initial_balance: dec!(0), kind: AccountKind::Personal,
-        }).is_err());
+        assert!(create_account(
+            &conn,
+            &NewAccount {
+                name: " ".into(),
+                currency: "USD".into(),
+                initial_balance: dec!(10000),
+                kind: AccountKind::Personal,
+            }
+        )
+        .is_err());
+        assert!(create_account(
+            &conn,
+            &NewAccount {
+                name: "X".into(),
+                currency: "USD".into(),
+                initial_balance: dec!(0),
+                kind: AccountKind::Personal,
+            }
+        )
+        .is_err());
     }
 
     #[test]
     fn refuse_delete_last_account() {
         let conn = fresh_db();
-        let id = create_account(&conn, &NewAccount {
-            name: "Only".into(), currency: "USD".into(),
-            initial_balance: dec!(10000), kind: AccountKind::Personal,
-        }).unwrap();
+        let id = create_account(
+            &conn,
+            &NewAccount {
+                name: "Only".into(),
+                currency: "USD".into(),
+                initial_balance: dec!(10000),
+                kind: AccountKind::Personal,
+            },
+        )
+        .unwrap();
         assert!(delete_account(&conn, id).is_err());
     }
 
     #[test]
     fn list_returns_all() {
         let conn = fresh_db();
-        let a = create_account(&conn, &NewAccount {
-            name: "A".into(), currency: "USD".into(),
-            initial_balance: dec!(10000), kind: AccountKind::Personal,
-        }).unwrap();
-        let b = create_account(&conn, &NewAccount {
-            name: "B".into(), currency: "USD".into(),
-            initial_balance: dec!(50000), kind: AccountKind::PropFirm,
-        }).unwrap();
+        let a = create_account(
+            &conn,
+            &NewAccount {
+                name: "A".into(),
+                currency: "USD".into(),
+                initial_balance: dec!(10000),
+                kind: AccountKind::Personal,
+            },
+        )
+        .unwrap();
+        let b = create_account(
+            &conn,
+            &NewAccount {
+                name: "B".into(),
+                currency: "USD".into(),
+                initial_balance: dec!(50000),
+                kind: AccountKind::PropFirm,
+            },
+        )
+        .unwrap();
         let list = list_accounts(&conn).unwrap();
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].id, a);
