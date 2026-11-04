@@ -16,10 +16,11 @@ pub fn create_trade(conn: &Connection, t: &NewTrade) -> Result<i64, DbError> {
     tx.execute(
         "INSERT INTO trades
          (account_id, symbol, side, entry_price, initial_stop, take_profit, total_quantity,
-          original_quantity, size_type, size_value, size_unit, outcome,
+          original_quantity, outcome, size_type, size_value, size_unit,
+          manual_pnl, current_price, current_price_updated_at, current_price_source, current_stop,
           status, strategy_id, opened_at, closed_at, notes, chart_url, screenshot_path,
-          manual_pnl, current_price, current_price_updated_at, current_price_source, current_stop, created_at, updated_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?7,?8,?9,?10,'open','open',?11,?12,NULL,?13,?14,?15,NULL,?16,?16)",
+          created_at, updated_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?7,'open',?8,?9,?10,NULL,NULL,NULL,NULL,NULL,'open',?11,?12,NULL,?13,?14,?15,?16,?16)",
         params![
             t.account_id, t.symbol, t.side.as_str(),
             t.entry_price.to_string(), t.initial_stop.to_string(),
@@ -371,6 +372,10 @@ mod tests {
                size_type TEXT DEFAULT 'lots', size_value TEXT, size_unit TEXT,
                manual_pnl TEXT,
                original_quantity TEXT,
+               current_price TEXT,
+               current_price_updated_at TEXT,
+               current_price_source TEXT,
+               current_stop TEXT,
                status TEXT, strategy_id INTEGER,
                opened_at TEXT, closed_at TEXT, notes TEXT,
                chart_url TEXT, screenshot_path TEXT,
@@ -417,7 +422,7 @@ mod tests {
         let t = get_trade(&conn, id).unwrap().unwrap();
         assert_eq!(t.status, TradeStatus::Closed);
         assert_eq!(t.outcome, TradeOutcome::TpHit);
-        assert_eq!(t.manual_pnl, current_price, current_price_updated_at, current_price_source, current_stop, Some(dec!(420)));
+        assert_eq!(t.manual_pnl, Some(dec!(420)));
     }
 
     #[test]
@@ -427,7 +432,7 @@ mod tests {
         add_exit_leg(&conn, id, dec!(1.0950), dec!(1), Decimal::ZERO, "t".into(),
             Some(TradeOutcome::SlHit), Some(dec!(-200))).unwrap();
         let t = get_trade(&conn, id).unwrap().unwrap();
-        assert_eq!(t.manual_pnl, current_price, current_price_updated_at, current_price_source, current_stop, Some(dec!(-200)));
+        assert_eq!(t.manual_pnl, Some(dec!(-200)));
     }
 }
 

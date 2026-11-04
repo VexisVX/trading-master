@@ -217,8 +217,11 @@ pub fn empty_trade() -> Trade {
         legs: vec![],
         tags: vec![],
         attachments: vec![],
-    }
-}
+        current_price: None,
+        current_price_updated_at: None,
+        current_price_source: None,
+        current_stop: None,
+    }}
 
 
 // ============================================================

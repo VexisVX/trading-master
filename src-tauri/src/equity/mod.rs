@@ -6,6 +6,8 @@
 pub mod config;
 pub mod nav;
 pub mod buffer;
+pub mod daily;
+pub mod reset;
 pub mod state_machine;
 pub mod recovery;
 pub mod protection;

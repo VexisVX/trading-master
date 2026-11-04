@@ -403,12 +403,15 @@ mod tests {
         let cfg = EquityConfig::default_v2();
         let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
         let p = TradeProposal {
+            symbol: None,
             entry: "1.1000".into(),
             stop: "1.0950".into(),
             take_profit: Some("1.1150".into()),
-            contract_multiplier: "100000".into(),
-            commission_per_unit: "0".into(),
-            slippage_buffer: "0".into(),
+            allow_legacy: true,
+            contract_multiplier: Some("100000".into()),
+            commission_per_unit: Some("0".into()),
+            slippage_buffer: Some("0".into()),
+            instrument_override: None,
         };
         let d = evaluate(&st, &cfg, Some(&p)).unwrap();
         assert!(d.allowed);
@@ -484,16 +487,16 @@ mod tests {
 
     #[test]
     fn t_eurusd_sizing() {
-        // EURUSD: 50 pips = 50 ticks (tick_size 0.00001, tick_value 1)
-        // loss_per_lot = 50 * 1 = 50
-        // R_allowed = 50.03 → size = 50.03/50 ≈ 1.00
+        // EURUSD: 0.0050 price distance / 0.00001 tick_size = 500 ticks
+        // 500 ticks × $1/lot = $500 per lot
+        // R_allowed = 10000 * 0.01 = $100 → size = 100/500 = 0.20 lots
         let inst = make_instrument("EURUSD", "0.00001", "1", "100000", "0.01", "0.01");
         let cfg = EquityConfig::default_v2();
         let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
         let d = eval_with_inst(&st, &cfg, &inst);
         assert!(d.allowed, "should allow: {:?}", d.reason);
         let size: f64 = d.size.unwrap().parse().unwrap();
-        assert!(size > 0.9 && size < 1.1, "expected ~1.0 lots, got {}", size);
+        assert!((size - 0.20).abs() < 0.05, "expected ~0.20 lots, got {}", size);
     }
 
     #[test]
@@ -518,7 +521,7 @@ mod tests {
         let d = evaluate(&st, &cfg, Some(&p)).unwrap();
         assert!(d.allowed);
         let size: f64 = d.size.unwrap().parse().unwrap();
-        assert!(size < 0.2, "expected small size, got {}", size);
+        assert!(size <= 0.21, "expected ≤0.21 lots, got {}", size);
     }
 
     #[test]
@@ -545,8 +548,20 @@ mod tests {
         inst.spec_source = SpecSource::Estimated;
         let cfg = EquityConfig::default_v2();
         let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
-        let d = eval_with_inst(&st, &cfg, &inst);
-        assert!(!d.allowed);
+        // evaluate() should return Err (validate_for_sizing fails before decision)
+        let p = TradeProposal {
+            symbol: None,
+            entry: "1.1000".into(),
+            stop: "1.0950".into(),
+            take_profit: None,
+            allow_legacy: false,
+            contract_multiplier: None,
+            commission_per_unit: None,
+            slippage_buffer: None,
+            instrument_override: Some(inst),
+        };
+        let result = evaluate(&st, &cfg, Some(&p));
+        assert!(result.is_err(), "expected Err for estimated spec");
     }
 
     #[test]
@@ -555,8 +570,19 @@ mod tests {
         inst.tick_size = Decimal::ZERO;
         let cfg = EquityConfig::default_v2();
         let st = AccountState::from_snapshot(snap_fresh(), &cfg).unwrap();
-        let d = eval_with_inst(&st, &cfg, &inst);
-        assert!(!d.allowed);
+        let p = TradeProposal {
+            symbol: None,
+            entry: "1.1000".into(),
+            stop: "1.0950".into(),
+            take_profit: None,
+            allow_legacy: false,
+            contract_multiplier: None,
+            commission_per_unit: None,
+            slippage_buffer: None,
+            instrument_override: Some(inst),
+        };
+        let result = evaluate(&st, &cfg, Some(&p));
+        assert!(result.is_err(), "expected Err for zero tick_size");
     }
 
     #[test]
@@ -594,10 +620,9 @@ mod tests {
             slippage_buffer: None,
             instrument_override: None,
         };
-        // evaluate() without conn → symbol lookup fails → reject
-        let d = evaluate(&st, &cfg, Some(&p)).unwrap();
-        assert!(!d.allowed);
-        assert_eq!(d.sizing_source, "none");
+        // evaluate() without conn → symbol requires DB → returns Err
+        let result = evaluate(&st, &cfg, Some(&p));
+        assert!(result.is_err(), "expected Err: symbol needs DB connection");
     }
 
     #[test]
