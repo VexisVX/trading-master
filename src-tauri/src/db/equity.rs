@@ -501,3 +501,118 @@ pub fn ensure_snapshot_nav_columns(conn: &rusqlite::Connection) -> rusqlite::Res
     }
     Ok(())
 }
+
+
+// ============================================================
+// PHASE 3: units + cash-flow helpers
+// ============================================================
+
+#[derive(Debug, Clone)]
+pub struct EquityUnitsRow {
+    pub id: i64,
+    pub account_id: i64,
+    pub units: String,
+    pub nav: String,
+    pub equity: String,
+    pub source: String,
+    pub taken_at: String,
+}
+
+pub fn latest_units(conn: &Connection, account_id: i64) -> Result<Option<EquityUnitsRow>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, units, nav, equity, source, taken_at
+         FROM equity_units
+         WHERE account_id = ?1
+         ORDER BY id DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query([account_id])?;
+    if let Some(r) = rows.next()? {
+        Ok(Some(EquityUnitsRow {
+            id: r.get(0)?, account_id: r.get(1)?,
+            units: r.get(2)?, nav: r.get(3)?, equity: r.get(4)?,
+            source: r.get(5)?, taken_at: r.get(6)?,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn insert_units(
+    conn: &Connection,
+    account_id: i64,
+    units: &str,
+    nav: &str,
+    equity: &str,
+    source: &str,
+    cash_flow_id: Option<i64>,
+) -> Result<i64, DbError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO equity_units
+           (account_id, units, nav, equity, source, cash_flow_id, taken_at, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+        rusqlite::params![account_id, units, nav, equity, source, cash_flow_id, now],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CashFlowRow {
+    pub id: i64,
+    pub account_id: i64,
+    pub kind: String,
+    pub amount: String,
+    pub currency: String,
+    pub occurred_at: String,
+    pub nav_before: String,
+    pub units_before: String,
+    pub units_after: String,
+    pub note: Option<String>,
+}
+
+pub fn insert_cash_flow(
+    conn: &Connection,
+    account_id: i64,
+    kind: &str,
+    amount: &str,
+    currency: &str,
+    nav_before: &str,
+    units_before: &str,
+    units_after: &str,
+    note: Option<&str>,
+) -> Result<i64, DbError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO account_cash_flows
+           (account_id, kind, amount, currency, occurred_at,
+            nav_before, units_before, units_after, note, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        rusqlite::params![
+            account_id, kind, amount, currency, now,
+            nav_before, units_before, units_after, note, now,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn list_cash_flows(
+    conn: &Connection,
+    account_id: i64,
+    limit: i64,
+) -> Result<Vec<CashFlowRow>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, kind, amount, currency, occurred_at,
+                nav_before, units_before, units_after, note
+         FROM account_cash_flows
+         WHERE account_id = ?1
+         ORDER BY id DESC LIMIT ?2",
+    )?;
+    let rows = stmt.query_map([account_id, limit], |r| Ok(CashFlowRow {
+        id: r.get(0)?, account_id: r.get(1)?,
+        kind: r.get(2)?, amount: r.get(3)?, currency: r.get(4)?,
+        occurred_at: r.get(5)?,
+        nav_before: r.get(6)?, units_before: r.get(7)?, units_after: r.get(8)?,
+        note: r.get(9)?,
+    }))?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}

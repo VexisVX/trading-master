@@ -689,6 +689,58 @@ export async function deleteInstrument(symbol: string): Promise<void> {
   return invoke<void>("equity_instrument_delete", { symbol });
 }
 
+
+
+/* ============================================================
+ * CASH FLOW (PHASE 3)
+ * ============================================================ */
+
+export interface CashFlowInput {
+  account_id: number;
+  amount: string;
+  note?: string | null;
+}
+
+export interface CashFlowOut {
+  cash_flow_id: number;
+  units_row_id: number;
+  nav_before: string;
+  nav_after: string;
+  units_before: string;
+  units_after: string;
+  amount: string;
+  kind: string;
+}
+
+export interface CashFlowRow {
+  id: number;
+  account_id: number;
+  kind: string;
+  amount: string;
+  currency: string;
+  occurred_at: string;
+  nav_before: string;
+  units_before: string;
+  units_after: string;
+  note: string | null;
+}
+
+export async function cashflowDeposit(input: CashFlowInput): Promise<CashFlowOut> {
+  return invoke<CashFlowOut>("equity_cashflow_deposit", { input });
+}
+
+export async function cashflowWithdraw(input: CashFlowInput): Promise<CashFlowOut> {
+  return invoke<CashFlowOut>("equity_cashflow_withdraw", { input });
+}
+
+export async function cashflowFee(input: CashFlowInput): Promise<CashFlowOut> {
+  return invoke<CashFlowOut>("equity_cashflow_fee", { input });
+}
+
+export async function listCashFlows(accountId: number, limit = 50): Promise<CashFlowRow[]> {
+  return invoke<CashFlowRow[]>("equity_cashflow_list", { accountId, limit });
+}
+
 /* ============================================================
  *  DEFAULTS
  * ============================================================ */

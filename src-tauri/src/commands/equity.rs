@@ -1593,3 +1593,248 @@ fn check_daily_data_quality(
 
     crate::equity::daily::compute(&inp).map(|_| ())
 }
+
+// ============================================================
+// PHASE 3 — cash flow (deposit / withdraw / fee / list)
+// ============================================================
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct CashFlowInput {
+    pub account_id: i64,
+    pub amount: String,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct CashFlowOut {
+    pub cash_flow_id: i64,
+    pub units_row_id: i64,
+    pub nav_before: String,
+    pub nav_after: String,
+    pub units_before: String,
+    pub units_after: String,
+    pub amount: String,
+    pub kind: String,
+}
+
+fn cashflow_deposit_impl(
+    conn: &rusqlite::Connection,
+    input: CashFlowInput,
+) -> Result<CashFlowOut, String> {
+    use rust_decimal::prelude::FromStr;
+
+    let amount = Decimal::from_str(&input.amount).map_err(|e| format!("amount: {e}"))?;
+    if amount <= Decimal::ZERO {
+        return Err("amount must be > 0".into());
+    }
+
+    // Load latest units
+    let u = crate::db::equity::latest_units(conn, input.account_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no equity_units row — run migration 028 or refresh".to_string())?;
+
+    let units_old = Decimal::from_str(&u.units).map_err(|e| e.to_string())?;
+    let nav_before = Decimal::from_str(&u.nav).map_err(|e| e.to_string())?;
+    if nav_before.is_zero() {
+        return Err("NAV is zero — cannot compute units".into());
+    }
+
+    let added_units = amount / nav_before;
+    let units_new = units_old + added_units;
+    let equity_new = units_new * nav_before;  // NAV invariant
+
+    // Currency from account
+    let currency: String = conn
+        .query_row("SELECT currency FROM accounts WHERE id = ?1", [input.account_id], |r| r.get(0))
+        .map_err(|e| format!("account not found: {e}"))?;
+
+    // Insert cash flow
+    let cf_id = crate::db::equity::insert_cash_flow(
+        conn,
+        input.account_id,
+        "deposit",
+        &amount.to_string(),
+        &currency,
+        &nav_before.to_string(),
+        &units_old.to_string(),
+        &units_new.to_string(),
+        input.note.as_deref(),
+    ).map_err(|e| e.to_string())?;
+
+    // Insert units
+    let u_id = crate::db::equity::insert_units(
+        conn,
+        input.account_id,
+        &units_new.to_string(),
+        &nav_before.to_string(),
+        &equity_new.to_string(),
+        "deposit",
+        Some(cf_id),
+    ).map_err(|e| e.to_string())?;
+
+    Ok(CashFlowOut {
+        cash_flow_id: cf_id,
+        units_row_id: u_id,
+        nav_before: nav_before.to_string(),
+        nav_after: nav_before.to_string(),
+        units_before: units_old.to_string(),
+        units_after: units_new.to_string(),
+        amount: amount.to_string(),
+        kind: "deposit".into(),
+    })
+}
+
+fn cashflow_withdraw_impl(
+    conn: &rusqlite::Connection,
+    input: CashFlowInput,
+) -> Result<CashFlowOut, String> {
+    use rust_decimal::prelude::FromStr;
+
+    let amount = Decimal::from_str(&input.amount).map_err(|e| format!("amount: {e}"))?;
+    if amount <= Decimal::ZERO {
+        return Err("amount must be > 0".into());
+    }
+
+    let u = crate::db::equity::latest_units(conn, input.account_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no equity_units row".to_string())?;
+
+    let units_old = Decimal::from_str(&u.units).map_err(|e| e.to_string())?;
+    let nav_before = Decimal::from_str(&u.nav).map_err(|e| e.to_string())?;
+    if nav_before.is_zero() {
+        return Err("NAV is zero".into());
+    }
+
+    let removed_units = amount / nav_before;
+    let units_new = units_old - removed_units;
+    if units_new <= Decimal::ZERO {
+        return Err("withdrawal would zero out units".into());
+    }
+    let equity_new = units_new * nav_before;
+
+    let currency: String = conn
+        .query_row("SELECT currency FROM accounts WHERE id = ?1", [input.account_id], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+
+    let cf_id = crate::db::equity::insert_cash_flow(
+        conn,
+        input.account_id,
+        "withdrawal",
+        &amount.to_string(),
+        &currency,
+        &nav_before.to_string(),
+        &units_old.to_string(),
+        &units_new.to_string(),
+        input.note.as_deref(),
+    ).map_err(|e| e.to_string())?;
+
+    let u_id = crate::db::equity::insert_units(
+        conn,
+        input.account_id,
+        &units_new.to_string(),
+        &nav_before.to_string(),
+        &equity_new.to_string(),
+        "withdraw",
+        Some(cf_id),
+    ).map_err(|e| e.to_string())?;
+
+    Ok(CashFlowOut {
+        cash_flow_id: cf_id,
+        units_row_id: u_id,
+        nav_before: nav_before.to_string(),
+        nav_after: nav_before.to_string(),
+        units_before: units_old.to_string(),
+        units_after: units_new.to_string(),
+        amount: amount.to_string(),
+        kind: "withdrawal".into(),
+    })
+}
+
+#[tauri::command]
+pub fn equity_cashflow_deposit(
+    state: State<'_, AppState>,
+    input: CashFlowInput,
+) -> Result<CashFlowOut, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let r = cashflow_deposit_impl(&tx, input)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn equity_cashflow_withdraw(
+    state: State<'_, AppState>,
+    input: CashFlowInput,
+) -> Result<CashFlowOut, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let r = cashflow_withdraw_impl(&tx, input)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn equity_cashflow_fee(
+    state: State<'_, AppState>,
+    input: CashFlowInput,
+) -> Result<CashFlowOut, String> {
+    use rust_decimal::prelude::FromStr;
+
+    let amount = Decimal::from_str(&input.amount).map_err(|e| format!("amount: {e}"))?;
+    if amount <= Decimal::ZERO {
+        return Err("amount must be > 0".into());
+    }
+
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
+    let u = crate::db::equity::latest_units(&tx, input.account_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no equity_units row".to_string())?;
+
+    let units = u.units.clone();
+    let nav = u.nav.clone();
+
+    let currency: String = tx
+        .query_row("SELECT currency FROM accounts WHERE id = ?1", [input.account_id], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+
+    // Fee: no units change (NAV units unaffected)
+    let cf_id = crate::db::equity::insert_cash_flow(
+        &tx,
+        input.account_id,
+        "fee",
+        &amount.to_string(),
+        &currency,
+        &nav,
+        &units,
+        &units,  // unchanged
+        input.note.as_deref(),
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(CashFlowOut {
+        cash_flow_id: cf_id,
+        units_row_id: u.id,
+        nav_before: nav.clone(),
+        nav_after: nav,
+        units_before: units.clone(),
+        units_after: units,
+        amount: amount.to_string(),
+        kind: "fee".into(),
+    })
+}
+
+#[tauri::command]
+pub fn equity_cashflow_list(
+    state: State<'_, AppState>,
+    account_id: i64,
+    limit: Option<i64>,
+) -> Result<Vec<crate::db::equity::CashFlowRow>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let n = limit.unwrap_or(50).clamp(1, 500);
+    crate::db::equity::list_cash_flows(&conn, account_id, n)
+        .map_err(|e| e.to_string())
+}

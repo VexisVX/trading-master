@@ -73,7 +73,7 @@ fn set_version(conn: &Connection, v: i64) -> Result<(), DbError> {
     Ok(())
 }
 
-const CURRENT_VERSION: i64 = 27;
+const CURRENT_VERSION: i64 = 28;
 
 fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     let mut v = current_version(conn)?;
@@ -111,6 +111,7 @@ fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     if v < 25 { conn.execute_batch(MIGRATION_025)?; set_version(conn, 25)?; v = 25; }
     if v < 26 { conn.execute_batch(MIGRATION_026)?; set_version(conn, 26)?; v = 26; }
     if v < 27 { conn.execute_batch(MIGRATION_027)?; set_version(conn, 27)?; v = 27; }
+    if v < 28 { conn.execute_batch(MIGRATION_028)?; set_version(conn, 28)?; v = 28; }
     let _ = v;
 
     Ok(())
@@ -553,6 +554,18 @@ CREATE INDEX IF NOT EXISTS idx_trades_open_priced
   ON trades(status, current_price_updated_at)
   WHERE status = 'open';
 "#;
+
+const MIGRATION_028: &str = r#"
+-- PHASE 3: seed equity_units for accounts that don't have one yet.
+-- Units = initial_balance (NAV starts at 1.0).
+INSERT INTO equity_units (account_id, units, nav, equity, source, taken_at, created_at)
+SELECT a.id, a.initial_balance, '1', a.initial_balance, 'init',
+       datetime('now'), datetime('now')
+FROM accounts a
+LEFT JOIN equity_units u ON u.account_id = a.id
+WHERE u.id IS NULL;
+"#;
+
 
 
 
