@@ -294,8 +294,20 @@ pub fn equity_evaluate(
             None
         }
     };
-    let state_acct = AccountState::from_snapshot_with_profile(parsed, &cfg, profile_opt.as_ref())
-        .map_err(|e| format!("state: {e}"))?;
+    // PHASE 5: load recovery authorization
+    let recovery_active = if let Some(aid) = account_id {
+        let conn2 = state.db.lock().map_err(|e| e.to_string())?;
+        crate::db::recovery::get_active(&conn2, aid)
+            .ok()
+            .flatten()
+            .is_some()
+    } else {
+        false
+    };
+
+    let state_acct = AccountState::from_snapshot_with_recovery(
+        parsed, &cfg, profile_opt.as_ref(), recovery_active
+    ).map_err(|e| format!("state: {e}"))?;
 
     // PHASE 2.2-C: reject if daily data is incomplete/stale
     // This is a data-quality block, NOT a PreservationPause.
@@ -2304,4 +2316,97 @@ pub fn equity_instruments_import_json(
 
     tx.commit().map_err(|e| format!("commit: {e}"))?;
     Ok(count)
+}
+
+// ============================================================
+// PHASE 5: Recovery authorization commands
+// ============================================================
+
+#[derive(Debug, serde::Serialize)]
+pub struct RecoveryStatusOut {
+    pub active: bool,
+    pub authorized_at: Option<String>,
+    pub expires_at: Option<String>,
+    pub reason: Option<String>,
+    pub probe_risk_pct: Option<String>,
+}
+
+#[tauri::command]
+pub fn equity_recovery_get(
+    state: State<'_, AppState>,
+    account_id: i64,
+) -> Result<RecoveryStatusOut, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let row = crate::db::recovery::get_active(&conn, account_id).map_err(|e| e.to_string())?;
+    Ok(match row {
+        Some(r) => RecoveryStatusOut {
+            active: true,
+            authorized_at: Some(r.authorized_at),
+            expires_at: r.expires_at,
+            reason: r.reason,
+            probe_risk_pct: Some(r.probe_risk_pct),
+        },
+        None => RecoveryStatusOut {
+            active: false,
+            authorized_at: None,
+            expires_at: None,
+            reason: None,
+            probe_risk_pct: None,
+        },
+    })
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct RecoveryGrantInput {
+    pub account_id: i64,
+    pub reason: Option<String>,
+    pub expires_in_hours: Option<i64>,
+    pub probe_risk_pct: Option<String>,
+}
+
+#[tauri::command]
+pub fn equity_recovery_grant(
+    state: State<'_, AppState>,
+    input: RecoveryGrantInput,
+) -> Result<RecoveryStatusOut, String> {
+    use rust_decimal::prelude::FromStr;
+
+    let pct = input.probe_risk_pct.clone().unwrap_or_else(|| "0.25".into());
+    let pct_d = Decimal::from_str(&pct).map_err(|e| format!("probe_risk_pct: {e}"))?;
+    if pct_d <= Decimal::ZERO || pct_d > Decimal::ONE {
+        return Err("probe_risk_pct must be in (0, 1]".into());
+    }
+
+    let expires_at = input.expires_in_hours.map(|h| {
+        (chrono::Utc::now() + chrono::Duration::hours(h)).to_rfc3339()
+    });
+
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    crate::db::recovery::insert(
+        &tx,
+        input.account_id,
+        "user",
+        expires_at.as_deref(),
+        input.reason.as_deref(),
+        &pct,
+    ).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(RecoveryStatusOut {
+        active: true,
+        authorized_at: Some(chrono::Utc::now().to_rfc3339()),
+        expires_at,
+        reason: input.reason,
+        probe_risk_pct: Some(pct),
+    })
+}
+
+#[tauri::command]
+pub fn equity_recovery_revoke(
+    state: State<'_, AppState>,
+    account_id: i64,
+) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    crate::db::recovery::revoke(&conn, account_id).map_err(|e| e.to_string())
 }

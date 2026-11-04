@@ -3566,3 +3566,244 @@ button.sidebar__item.is-active {
 [data-theme="cream"] .ee-confirm__msg {
   color: #2e2418;
 }
+
+/* ============================================================
+ * Recovery Banner (PHASE 5)
+ * ============================================================ */
+
+.ee-recovery-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 10px;
+  margin-bottom: 14px;
+  color: var(--warning, #fbbf24);
+}
+
+.ee-recovery-banner__icon { font-size: 22px; }
+
+.ee-recovery-banner__body { flex: 1; }
+
+.ee-recovery-banner__title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  letter-spacing: 0.3px;
+}
+
+.ee-recovery-banner__detail {
+  font-size: 12px;
+  color: var(--text-1, #9aa7b4);
+}
+
+.ee-recovery-banner__err {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--danger, #f87171);
+}
+
+/* Light theme */
+[data-theme="light"] .ee-recovery-banner {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+[data-theme="light"] .ee-recovery-banner__detail {
+  color: #78350f;
+}
+
+/* Cream theme */
+[data-theme="cream"] .ee-recovery-banner {
+  background: #f5e0b0;
+  border-color: #d4a843;
+  color: #78350f;
+}
+[data-theme="cream"] .ee-recovery-banner__detail {
+  color: #6b5d47;
+}
+
+/* ============================================================
+ * Recovery Dialog
+ * ============================================================ */
+
+.ee-rec-field {
+  margin-bottom: 14px;
+}
+
+.ee-rec-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-1, #9aa7b4);
+  margin-bottom: 4px;
+}
+
+.ee-rec-field input[type="text"],
+.ee-rec-field input[type="number"] {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--bg-2, #161d26);
+  color: var(--text-0, #e6edf3);
+  border: 1px solid var(--border, #232c38);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.ee-rec-field .ee-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-2, #6b7886);
+}
+
+.ee-rec-confirm {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  background: var(--bg-1, #11161d);
+  border: 1px solid var(--border, #232c38);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-0, #e6edf3);
+}
+
+.ee-rec-confirm input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: var(--accent, #2dd4bf);
+}
+
+[data-theme="light"] .ee-rec-confirm {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+[data-theme="cream"] .ee-rec-confirm {
+  background: #efe7d8;
+  border-color: #c8bca1;
+  color: #2e2418;
+}
+
+/* ============================================================
+ * State Machine Card
+ * ============================================================ */
+
+.ee-state-machine { padding: 16px 20px; }
+
+.ee-sm-timeline {
+  display: flex;
+  gap: 6px;
+  margin: 16px 0;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.ee-sm-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 90px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-1, #11161d);
+  border: 1px solid var(--border, #232c38);
+  transition: all 0.15s ease;
+}
+
+.ee-sm-step.is-active {
+  border-color: var(--accent, #2dd4bf);
+  background: var(--accent-soft, rgba(45, 212, 191, 0.08));
+}
+
+.ee-sm-step.is-past {
+  opacity: 0.6;
+}
+
+.ee-sm-step__dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--bg-3, #1d2530);
+  color: var(--text-1, #9aa7b4);
+}
+.ee-sm-step__dot--ok { background: rgba(52, 211, 153, 0.2); color: #34d399; }
+.ee-sm-step__dot--warn { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+.ee-sm-step__dot--bad { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+.ee-sm-step__dot--muted { background: var(--bg-3); color: var(--text-2); }
+
+.ee-sm-step.is-active .ee-sm-step__dot {
+  box-shadow: 0 0 0 3px var(--accent-soft, rgba(45, 212, 191, 0.15));
+}
+
+.ee-sm-step__label {
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  color: var(--text-1, #9aa7b4);
+}
+
+.ee-sm-step.is-active .ee-sm-step__label {
+  color: var(--text-0, #e6edf3);
+  font-weight: 600;
+}
+
+.ee-sm-detail {
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #232c38);
+}
+
+.ee-sm-detail__row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 12px;
+  border-bottom: 1px dashed rgba(154, 167, 180, 0.12);
+}
+.ee-sm-detail__row span { color: var(--text-1, #9aa7b4); }
+.ee-sm-detail__row strong {
+  font-family: var(--mono, monospace);
+  color: var(--text-0, #e6edf3);
+}
+
+.ee-sm-detail__hint {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--bg-1, #11161d);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-1, #9aa7b4);
+  line-height: 1.6;
+}
+
+/* Light theme */
+[data-theme="light"] .ee-sm-step { background: #f8fafc; border-color: #e2e8f0; }
+[data-theme="light"] .ee-sm-step.is-active { background: #cffafe; border-color: #0891b2; }
+[data-theme="light"] .ee-sm-step__label { color: #475569; }
+[data-theme="light"] .ee-sm-step.is-active .ee-sm-step__label { color: #0f172a; }
+[data-theme="light"] .ee-sm-detail { border-top-color: #e2e8f0; }
+[data-theme="light"] .ee-sm-detail__row { border-bottom-color: rgba(100, 116, 139, 0.15); }
+[data-theme="light"] .ee-sm-detail__row span { color: #475569; }
+[data-theme="light"] .ee-sm-detail__row strong { color: #0f172a; }
+[data-theme="light"] .ee-sm-detail__hint { background: #f1f5f9; color: #475569; }
+
+/* Cream theme */
+[data-theme="cream"] .ee-sm-step { background: #efe7d8; border-color: #e0d6c2; }
+[data-theme="cream"] .ee-sm-step.is-active { background: #d4ecec; border-color: #0e7490; }
+[data-theme="cream"] .ee-sm-step__label { color: #4a3f2e; }
+[data-theme="cream"] .ee-sm-detail { border-top-color: #e0d6c2; }
+[data-theme="cream"] .ee-sm-detail__row { border-bottom-color: rgba(107, 93, 71, 0.15); }
+[data-theme="cream"] .ee-sm-detail__row span { color: #4a3f2e; }
+[data-theme="cream"] .ee-sm-detail__row strong { color: #2e2418; }

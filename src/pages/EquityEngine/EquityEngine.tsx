@@ -4,6 +4,7 @@ import {
   autoSnapshotFromTrades,
   deriveStatus,
   getLatestSnapshot,
+  getRecoveryStatus,
   listAccounts,
   listDecisions,
   previewRisk,
@@ -19,6 +20,9 @@ import { NewTradeCard } from "./NewTradeCard";
 import { RecentDecisionsCard } from "./RecentDecisionsCard";
 import { InstrumentsCard } from "./InstrumentsCard";
 import { CashFlowCard } from "./CashFlowCard";
+import { RecoveryBanner } from "./RecoveryBanner";
+import { RecoveryDialog } from "./RecoveryDialog";
+import { StateMachineCard } from "./StateMachineCard";
 import { WhyThisSizeModal } from "./WhyThisSizeModal";
 import { SettingsModal } from "./SettingsModal";
 import { AllDecisionsModal } from "./AllDecisionsModal";
@@ -34,6 +38,8 @@ export function EquityEngine() {
   const [snapshot, setSnapshot] = useState<EquitySnapshotRow | null>(null);
   const [decisions, setDecisions] = useState<DecisionRowOut[]>([]);
   const [riskPreview, setRiskPreview] = useState<RiskPreview | null>(null);
+  const [recoveryStatus, setRecoveryStatus] = useState<import("../../lib/equityApi").RecoveryStatus | null>(null);
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -139,6 +145,10 @@ export function EquityEngine() {
     try {
       await autoSnapshotFromTrades(selectedAccountId ?? undefined);
       await loadAll(selectedAccountId ?? undefined);
+      if (selectedAccountId) {
+        const rs = await getRecoveryStatus(selectedAccountId).catch(() => null);
+        setRecoveryStatus(rs);
+      }
       setRefreshKey((k) => k + 1);
     } catch (e) {
       setError(String(e));
@@ -220,7 +230,7 @@ export function EquityEngine() {
       {error && <div className="ee-alert ee-alert--error">{error}</div>}
 
       <AccountStatusCard
-        status={status}
+              status={status}
         accounts={accounts}
         selectedAccountId={selectedAccountId}
         onSelectAccount={handleSelectAccount}
@@ -228,9 +238,18 @@ export function EquityEngine() {
         onRefresh={refresh}
         onOpenSnapshots={() => setShowSnapshots(true)}
       />
+      {recoveryStatus?.active && selectedAccountId && (
+        <RecoveryBanner
+          accountId={selectedAccountId}
+          status={recoveryStatus}
+          onRevoked={() => refresh()}
+        />
+      )}
+
 
       <RiskIntelligenceCard preview={riskPreview} loading={loadingPreview} />
 
+      
       <CapitalProtectionCard
         preview={riskPreview}
         accountId={selectedAccountId ?? undefined}
@@ -248,10 +267,21 @@ export function EquityEngine() {
             : 0
         }
         onOpenWhyThisSize={setWhyResult}
+      
+        currentState={riskPreview?.state_enum}
+        onRequestRecovery={() => setRecoveryDialogOpen(true)}
       />
 
         <InstrumentsCard />
-        <CashFlowCard accountId={selectedAccountId ?? 1} />
+              {riskPreview && (
+        <StateMachineCard
+          stateEnum={riskPreview.state_enum || riskPreview.state || ""}
+          phase={riskPreview.state || ""}
+          bufferR={riskPreview.buffer_r || "0"}
+        />
+      )}
+
+<CashFlowCard accountId={selectedAccountId ?? 1} />
 <RecentDecisionsCard
         decisions={decisions}
         onViewAll={() => setShowAll(true)}
@@ -283,6 +313,15 @@ export function EquityEngine() {
           }}
         />
       )}
-    </div>
+    
+      {recoveryDialogOpen && selectedAccountId && riskPreview && (
+        <RecoveryDialog
+          accountId={selectedAccountId}
+          currentState={riskPreview.state_enum || ""}
+          onClose={() => setRecoveryDialogOpen(false)}
+          onGranted={() => refresh()}
+        />
+      )}
+</div>
   );
 }

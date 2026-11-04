@@ -755,6 +755,39 @@ export async function deleteCashFlow(flowId: number): Promise<void> {
   return invoke<void>("equity_cashflow_delete", { flowId });
 }
 
+
+
+/* ============================================================
+ * RECOVERY MODE (PHASE 5)
+ * ============================================================ */
+
+export interface RecoveryStatus {
+  active: boolean;
+  authorized_at: string | null;
+  expires_at: string | null;
+  reason: string | null;
+  probe_risk_pct: string | null;
+}
+
+export interface RecoveryGrantInput {
+  account_id: number;
+  reason?: string | null;
+  expires_in_hours?: number | null;
+  probe_risk_pct?: string | null;
+}
+
+export async function getRecoveryStatus(accountId: number): Promise<RecoveryStatus> {
+  return invoke<RecoveryStatus>("equity_recovery_get", { accountId });
+}
+
+export async function grantRecovery(input: RecoveryGrantInput): Promise<RecoveryStatus> {
+  return invoke<RecoveryStatus>("equity_recovery_grant", { input });
+}
+
+export async function revokeRecovery(accountId: number): Promise<number> {
+  return invoke<number>("equity_recovery_revoke", { accountId });
+}
+
 /* ============================================================
  *  DEFAULTS
  * ============================================================ */

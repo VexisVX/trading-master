@@ -15,6 +15,8 @@ interface Props {
   allowedRisk: number;
   accountId?: number;
   onOpenWhyThisSize: (result: DecisionOut) => void;
+  currentState?: string;
+  onRequestRecovery?: () => void;
 }
 
 export function NewTradeCard({
@@ -22,6 +24,8 @@ export function NewTradeCard({
   allowedRisk,
   accountId,
   onOpenWhyThisSize,
+  currentState,
+  onRequestRecovery,
 }: Props) {
   const [entry, setEntry] = useState("1.1000");
   const [stop, setStop] = useState("1.0950");
@@ -103,6 +107,36 @@ export function NewTradeCard({
           </p>
         </div>
       </div>
+
+      
+      {currentState === "preservation_pause" && (
+        <div className="ee-alert ee-alert--warn" style={{ marginBottom: 14 }}>
+          <strong>⚠ Preservation Pause</strong>
+          <p style={{ margin: "8px 0 0" }}>
+            Buffer_R ≤ 2. New trades are blocked. You can wait for recovery
+            or enable Recovery Mode explicitly.
+          </p>
+          {onRequestRecovery && (
+            <button
+              className="ee-btn ee-btn--primary"
+              onClick={onRequestRecovery}
+              style={{ marginTop: 10 }}
+            >
+              🔬 Enable Recovery Mode
+            </button>
+          )}
+        </div>
+      )}
+
+      {currentState === "prop_hard_lock" && (
+        <div className="ee-alert ee-alert--error" style={{ marginBottom: 14 }}>
+          <strong>🚫 Prop Hard Lock</strong>
+          <p style={{ margin: "8px 0 0" }}>
+            A prop-firm breach has occurred. Recovery is NOT allowed. Fix the
+            underlying prop rules or recreate the account.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={evaluate}>
         {/* Row 1: entry / stop / target */}

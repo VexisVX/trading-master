@@ -20,6 +20,7 @@ pub mod instruments;
 
 pub mod live_presets;
 pub mod profiles;
+pub mod recovery;
 pub mod prop_firm;
 pub mod risk_settings;
 pub mod strategies;

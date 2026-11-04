@@ -253,3 +253,56 @@ impl AccountState {
         })
     }
 }
+
+impl AccountState {
+    /// Build state with explicit recovery authorization (PHASE 5).
+    pub fn from_snapshot_with_recovery(
+        snapshot: ParsedSnapshot,
+        config: &crate::equity::EquityConfig,
+        profile: Option<&crate::db::profiles::AccountProfileRow>,
+        recovery_authorized: bool,
+    ) -> Result<Self, String> {
+        use crate::equity::state_machine::{next, State, TransitionInput};
+
+        // Call base constructor
+        let mut state = Self::from_snapshot_with_profile(snapshot, config, profile)?;
+
+        // Compute buffer_r for state machine
+        let r0 = config.r0.parse::<Decimal>().unwrap_or(Decimal::new(1, 2));
+        let r_base = state.snapshot.equity * r0;
+        let raw_b = state.snapshot.equity - state.f_internal - state.snapshot.open_portfolio_risk;
+        let b = if raw_b > Decimal::ZERO { raw_b } else { Decimal::ZERO };
+        let buffer_r = if r_base.is_zero() { Decimal::ZERO } else { b / r_base };
+
+        // Run state machine with recovery_authorized flag
+        let previous = state.state_enum;
+        let prop_breached = state.snapshot.equity <= state.f_prop && state.f_prop > Decimal::ZERO;
+        let ti = TransitionInput {
+            previous,
+            prop_breached,
+            daily_locked: false,
+            buffer_r,
+            recovery_authorized,
+        };
+        state.state_enum = next(&ti);
+
+        // PHASE 5-C: In RecoveryMode, override m_preserve with probe_risk_pct (0.25)
+        // to allow small probe trades
+        if state.state_enum == State::RecoveryMode {
+            state.m_preserve = Decimal::new(25, 2);  // 0.25
+        }
+
+        // Legacy phase map
+        state.phase = match state.state_enum {
+            State::PropHardLock => AccountPhase::Disabled,
+            State::PreservationPause => AccountPhase::Paused,
+            State::RecoveryMode => AccountPhase::Recovery,
+            State::Protected => AccountPhase::Caution,
+            State::DailyLock => AccountPhase::Paused,
+            State::NormalGrowth => AccountPhase::Normal,
+        };
+
+        Ok(state)
+    }
+}
+
