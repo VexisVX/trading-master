@@ -18,6 +18,7 @@ import { CapitalProtectionCard } from "./CapitalProtectionCard";
 import { NewTradeCard } from "./NewTradeCard";
 import { RecentDecisionsCard } from "./RecentDecisionsCard";
 import { InstrumentsCard } from "./InstrumentsCard";
+import { CashFlowCard } from "./CashFlowCard";
 import { WhyThisSizeModal } from "./WhyThisSizeModal";
 import { SettingsModal } from "./SettingsModal";
 import { AllDecisionsModal } from "./AllDecisionsModal";
@@ -254,6 +255,7 @@ export function EquityEngine() {
         onViewAll={() => setShowAll(true)}
       />
         <InstrumentsCard />
+        <CashFlowCard accountId={selectedAccountId ?? 1} />
 
       {whyResult && (
         <WhyThisSizeModal

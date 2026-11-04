@@ -10,563 +10,426 @@ DB="$HOME/.local/share/com.trading.manager/app.db"
 BD="$HOME/.local/share/com.trading.manager/backups"
 mkdir -p "$BD"
 STAMP="$(date +%Y%m%d_%H%M%S)"
-BK="$BD/pre_phase3a_${STAMP}.db"
+BK="$BD/pre_phase3b_${STAMP}.db"
 [ -f "$DB" ] && sqlite3 "$DB" ".backup '$BK'"
-echo "Backup: $BK"
 
 # ============================================================
-# 1) MIGRATION_028 — equity_units baseline for existing accounts
+# 1) CashFlowCard.tsx
 # ============================================================
-echo "==> [1/6] MIGRATION_028 — equity_units baseline"
-python3 - <<'PY'
-import pathlib, sys
-p = pathlib.Path("src-tauri/src/db/mod.rs")
-s = p.read_text()
+echo "==> [1/4] CashFlowCard.tsx"
+cat > src/pages/EquityEngine/CashFlowCard.tsx <<'TSX_EOF'
+import { useEffect, useState } from "react";
+import {
+  CashFlowRow,
+  cashflowDeposit,
+  cashflowWithdraw,
+  cashflowFee,
+  listCashFlows,
+  fmtMoney,
+} from "../../lib/equityApi";
 
-if "MIGRATION_028" in s:
-    print("  SKIP: MIGRATION_028 already present")
-    sys.exit(0)
+type Kind = "deposit" | "withdrawal" | "fee";
 
-anchor = 'const MIGRATION_027: &str = r#"'
-idx = s.find(anchor)
-if idx == -1: raise SystemExit("MIGRATION_027 anchor not found")
-end = s.find('"#;', idx + len(anchor))
-if end == -1: raise SystemExit("MIGRATION_027 closing not found")
-end += 3
-
-new_mig = '''
-
-const MIGRATION_028: &str = r#"
--- PHASE 3: seed equity_units for accounts that don't have one yet.
--- Units = initial_balance (NAV starts at 1.0).
-INSERT INTO equity_units (account_id, units, nav, equity, source, taken_at, created_at)
-SELECT a.id, a.initial_balance, '1', a.initial_balance, 'init',
-       datetime('now'), datetime('now')
-FROM accounts a
-LEFT JOIN equity_units u ON u.account_id = a.id
-WHERE u.id IS NULL;
-"#;
-'''
-
-s = s[:end] + new_mig + s[end:]
-s = s.replace("const CURRENT_VERSION: i64 = 27;", "const CURRENT_VERSION: i64 = 28;")
-needle = 'if v < 27 { conn.execute_batch(MIGRATION_027)?; set_version(conn, 27)?; v = 27; }'
-if needle in s:
-    s = s.replace(needle, needle + '\n    if v < 28 { conn.execute_batch(MIGRATION_028)?; set_version(conn, 28)?; v = 28; }')
-p.write_text(s)
-print("  ✓ MIGRATION_028 added; CURRENT_VERSION=28")
-PY
-
-# ============================================================
-# 2) db/equity.rs — helpers for units + cash flows
-# ============================================================
-echo "==> [2/6] db/equity.rs — units + cashflow helpers"
-python3 - <<'PY'
-import pathlib
-p = pathlib.Path("src-tauri/src/db/equity.rs")
-s = p.read_text()
-
-if "pub fn latest_units" in s:
-    print("  SKIP: helpers already present")
-else:
-    add = '''
-
-// ============================================================
-// PHASE 3: units + cash-flow helpers
-// ============================================================
-
-#[derive(Debug, Clone)]
-pub struct EquityUnitsRow {
-    pub id: i64,
-    pub account_id: i64,
-    pub units: String,
-    pub nav: String,
-    pub equity: String,
-    pub source: String,
-    pub taken_at: String,
+interface Props {
+  accountId: number;
 }
 
-pub fn latest_units(conn: &Connection, account_id: i64) -> Result<Option<EquityUnitsRow>, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT id, account_id, units, nav, equity, source, taken_at
-         FROM equity_units
-         WHERE account_id = ?1
-         ORDER BY id DESC LIMIT 1",
-    )?;
-    let mut rows = stmt.query([account_id])?;
-    if let Some(r) = rows.next()? {
-        Ok(Some(EquityUnitsRow {
-            id: r.get(0)?, account_id: r.get(1)?,
-            units: r.get(2)?, nav: r.get(3)?, equity: r.get(4)?,
-            source: r.get(5)?, taken_at: r.get(6)?,
-        }))
-    } else {
-        Ok(None)
+export function CashFlowCard({ accountId }: Props) {
+  const [flows, setFlows] = useState<CashFlowRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [kind, setKind] = useState<Kind>("deposit");
+  const [amount, setAmount] = useState<string>("");
+  const [note, setNote] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+  const [ok, setOk] = useState<string | null>(null);
+
+  async function refresh() {
+    setLoading(true);
+    setErr(null);
+    try {
+      setFlows(await listCashFlows(accountId, 50));
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setLoading(false);
     }
-}
+  }
 
-pub fn insert_units(
-    conn: &Connection,
-    account_id: i64,
-    units: &str,
-    nav: &str,
-    equity: &str,
-    source: &str,
-    cash_flow_id: Option<i64>,
-) -> Result<i64, DbError> {
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "INSERT INTO equity_units
-           (account_id, units, nav, equity, source, cash_flow_id, taken_at, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-        rusqlite::params![account_id, units, nav, equity, source, cash_flow_id, now],
-    )?;
-    Ok(conn.last_insert_rowid())
-}
+  useEffect(() => {
+    refresh();
+  }, [accountId]);
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct CashFlowRow {
-    pub id: i64,
-    pub account_id: i64,
-    pub kind: String,
-    pub amount: String,
-    pub currency: String,
-    pub occurred_at: String,
-    pub nav_before: String,
-    pub units_before: String,
-    pub units_after: String,
-    pub note: Option<String>,
-}
+  async function submit() {
+    if (!amount.trim()) {
+      setErr("Amount required");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    setOk(null);
+    try {
+      const input = {
+        account_id: accountId,
+        amount: amount.trim(),
+        note: note.trim() || null,
+      };
+      let r;
+      if (kind === "deposit") r = await cashflowDeposit(input);
+      else if (kind === "withdrawal") r = await cashflowWithdraw(input);
+      else r = await cashflowFee(input);
+      setOk(`✓ ${kind} ${r.amount} → units ${r.units_before} → ${r.units_after}`);
+      setAmount("");
+      setNote("");
+      await refresh();
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
-pub fn insert_cash_flow(
-    conn: &Connection,
-    account_id: i64,
-    kind: &str,
-    amount: &str,
-    currency: &str,
-    nav_before: &str,
-    units_before: &str,
-    units_after: &str,
-    note: Option<&str>,
-) -> Result<i64, DbError> {
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "INSERT INTO account_cash_flows
-           (account_id, kind, amount, currency, occurred_at,
-            nav_before, units_before, units_after, note, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        rusqlite::params![
-            account_id, kind, amount, currency, now,
-            nav_before, units_before, units_after, note, now,
-        ],
-    )?;
-    Ok(conn.last_insert_rowid())
-}
+  return (
+    <section className="ee-card ee-cashflow">
+      <div className="ee-card__header">
+        <div>
+          <h3 className="ee-card__title">Cash Flow</h3>
+          <p className="ee-card__subtitle">
+            Deposits and withdrawals adjust units — NAV stays invariant
+          </p>
+        </div>
+      </div>
 
-pub fn list_cash_flows(
-    conn: &Connection,
-    account_id: i64,
-    limit: i64,
-) -> Result<Vec<CashFlowRow>, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT id, account_id, kind, amount, currency, occurred_at,
-                nav_before, units_before, units_after, note
-         FROM account_cash_flows
-         WHERE account_id = ?1
-         ORDER BY id DESC LIMIT ?2",
-    )?;
-    let rows = stmt.query_map([account_id, limit], |r| Ok(CashFlowRow {
-        id: r.get(0)?, account_id: r.get(1)?,
-        kind: r.get(2)?, amount: r.get(3)?, currency: r.get(4)?,
-        occurred_at: r.get(5)?,
-        nav_before: r.get(6)?, units_before: r.get(7)?, units_after: r.get(8)?,
-        note: r.get(9)?,
-    }))?;
-    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+      <div className="ee-cf-form">
+        <div className="ee-cf-tabs">
+          <button
+            className={`ee-cf-tab ${kind === "deposit" ? "is-active" : ""}`}
+            onClick={() => setKind("deposit")}
+          >
+            Deposit
+          </button>
+          <button
+            className={`ee-cf-tab ${kind === "withdrawal" ? "is-active" : ""}`}
+            onClick={() => setKind("withdrawal")}
+          >
+            Withdraw
+          </button>
+          <button
+            className={`ee-cf-tab ${kind === "fee" ? "is-active" : ""}`}
+            onClick={() => setKind("fee")}
+          >
+            Fee
+          </button>
+        </div>
+
+        <div className="ee-cf-row">
+          <label className="ee-cf-label">Amount</label>
+          <input
+            className="mono ee-cf-input"
+            type="number"
+            step="0.01"
+            min="0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.00"
+          />
+          <label className="ee-cf-label">Note</label>
+          <input
+            className="ee-cf-input"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="optional"
+          />
+          <button
+            className="ee-btn ee-btn--primary"
+            onClick={submit}
+            disabled={busy}
+          >
+            {busy ? "…" : kind === "deposit" ? "Deposit" : kind === "withdrawal" ? "Withdraw" : "Record fee"}
+          </button>
+        </div>
+
+        {err && <div className="ee-alert ee-alert--error">{err}</div>}
+        {ok && <div className="ee-alert ee-alert--success">{ok}</div>}
+      </div>
+
+      <div className="ee-cf-list-wrap">
+        {loading && <div className="ee-muted">Loading…</div>}
+        {!loading && flows.length === 0 && (
+          <div className="ee-muted" style={{ padding: 12, textAlign: "center" }}>
+            No cash flows yet.
+          </div>
+        )}
+        {!loading && flows.length > 0 && (
+          <table className="ee-cf-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Kind</th>
+                <th>Amount</th>
+                <th>NAV</th>
+                <th>Units before → after</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {flows.map((f) => (
+                <tr key={f.id}>
+                  <td className="mono">{f.occurred_at.slice(0, 19).replace("T", " ")}</td>
+                  <td>
+                    <span className={`ee-cf-kind ee-cf-kind--${f.kind}`}>{f.kind}</span>
+                  </td>
+                  <td className="mono">{fmtMoney(f.amount)} {f.currency}</td>
+                  <td className="mono">{f.nav_before}</td>
+                  <td className="mono">{f.units_before} → {f.units_after}</td>
+                  <td>{f.note || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
+  );
 }
-'''
-    s += add
-    p.write_text(s)
-    print("  ✓ units + cashflow helpers added")
-PY
+TSX_EOF
+echo "  ✓ CashFlowCard.tsx"
 
 # ============================================================
-# 3) commands/equity.rs — Tauri commands
+# 2) CSS
 # ============================================================
-echo "==> [3/6] cashflow Tauri commands"
-cat > /tmp/p3_cmds.rs <<'RUST_EOF'
-
-// ============================================================
-// PHASE 3 — cash flow (deposit / withdraw / fee / list)
-// ============================================================
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct CashFlowInput {
-    pub account_id: i64,
-    pub amount: String,
-    pub note: Option<String>,
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct CashFlowOut {
-    pub cash_flow_id: i64,
-    pub units_row_id: i64,
-    pub nav_before: String,
-    pub nav_after: String,
-    pub units_before: String,
-    pub units_after: String,
-    pub amount: String,
-    pub kind: String,
-}
-
-fn cashflow_deposit_impl(
-    conn: &rusqlite::Connection,
-    input: CashFlowInput,
-) -> Result<CashFlowOut, String> {
-    use rust_decimal::prelude::FromStr;
-
-    let amount = Decimal::from_str(&input.amount).map_err(|e| format!("amount: {e}"))?;
-    if amount <= Decimal::ZERO {
-        return Err("amount must be > 0".into());
-    }
-
-    // Load latest units
-    let u = crate::db::equity::latest_units(conn, input.account_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "no equity_units row — run migration 028 or refresh".to_string())?;
-
-    let units_old = Decimal::from_str(&u.units).map_err(|e| e.to_string())?;
-    let nav_before = Decimal::from_str(&u.nav).map_err(|e| e.to_string())?;
-    if nav_before.is_zero() {
-        return Err("NAV is zero — cannot compute units".into());
-    }
-
-    let added_units = amount / nav_before;
-    let units_new = units_old + added_units;
-    let equity_new = units_new * nav_before;  // NAV invariant
-
-    // Currency from account
-    let currency: String = conn
-        .query_row("SELECT currency FROM accounts WHERE id = ?1", [input.account_id], |r| r.get(0))
-        .map_err(|e| format!("account not found: {e}"))?;
-
-    // Insert cash flow
-    let cf_id = crate::db::equity::insert_cash_flow(
-        conn,
-        input.account_id,
-        "deposit",
-        &amount.to_string(),
-        &currency,
-        &nav_before.to_string(),
-        &units_old.to_string(),
-        &units_new.to_string(),
-        input.note.as_deref(),
-    ).map_err(|e| e.to_string())?;
-
-    // Insert units
-    let u_id = crate::db::equity::insert_units(
-        conn,
-        input.account_id,
-        &units_new.to_string(),
-        &nav_before.to_string(),
-        &equity_new.to_string(),
-        "deposit",
-        Some(cf_id),
-    ).map_err(|e| e.to_string())?;
-
-    Ok(CashFlowOut {
-        cash_flow_id: cf_id,
-        units_row_id: u_id,
-        nav_before: nav_before.to_string(),
-        nav_after: nav_before.to_string(),
-        units_before: units_old.to_string(),
-        units_after: units_new.to_string(),
-        amount: amount.to_string(),
-        kind: "deposit".into(),
-    })
-}
-
-fn cashflow_withdraw_impl(
-    conn: &rusqlite::Connection,
-    input: CashFlowInput,
-) -> Result<CashFlowOut, String> {
-    use rust_decimal::prelude::FromStr;
-
-    let amount = Decimal::from_str(&input.amount).map_err(|e| format!("amount: {e}"))?;
-    if amount <= Decimal::ZERO {
-        return Err("amount must be > 0".into());
-    }
-
-    let u = crate::db::equity::latest_units(conn, input.account_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "no equity_units row".to_string())?;
-
-    let units_old = Decimal::from_str(&u.units).map_err(|e| e.to_string())?;
-    let nav_before = Decimal::from_str(&u.nav).map_err(|e| e.to_string())?;
-    if nav_before.is_zero() {
-        return Err("NAV is zero".into());
-    }
-
-    let removed_units = amount / nav_before;
-    let units_new = units_old - removed_units;
-    if units_new <= Decimal::ZERO {
-        return Err("withdrawal would zero out units".into());
-    }
-    let equity_new = units_new * nav_before;
-
-    let currency: String = conn
-        .query_row("SELECT currency FROM accounts WHERE id = ?1", [input.account_id], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-
-    let cf_id = crate::db::equity::insert_cash_flow(
-        conn,
-        input.account_id,
-        "withdrawal",
-        &amount.to_string(),
-        &currency,
-        &nav_before.to_string(),
-        &units_old.to_string(),
-        &units_new.to_string(),
-        input.note.as_deref(),
-    ).map_err(|e| e.to_string())?;
-
-    let u_id = crate::db::equity::insert_units(
-        conn,
-        input.account_id,
-        &units_new.to_string(),
-        &nav_before.to_string(),
-        &equity_new.to_string(),
-        "withdraw",
-        Some(cf_id),
-    ).map_err(|e| e.to_string())?;
-
-    Ok(CashFlowOut {
-        cash_flow_id: cf_id,
-        units_row_id: u_id,
-        nav_before: nav_before.to_string(),
-        nav_after: nav_before.to_string(),
-        units_before: units_old.to_string(),
-        units_after: units_new.to_string(),
-        amount: amount.to_string(),
-        kind: "withdrawal".into(),
-    })
-}
-
-#[tauri::command]
-pub fn equity_cashflow_deposit(
-    state: State<'_, AppState>,
-    input: CashFlowInput,
-) -> Result<CashFlowOut, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-    let r = cashflow_deposit_impl(&tx, input)?;
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(r)
-}
-
-#[tauri::command]
-pub fn equity_cashflow_withdraw(
-    state: State<'_, AppState>,
-    input: CashFlowInput,
-) -> Result<CashFlowOut, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-    let r = cashflow_withdraw_impl(&tx, input)?;
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(r)
-}
-
-#[tauri::command]
-pub fn equity_cashflow_fee(
-    state: State<'_, AppState>,
-    input: CashFlowInput,
-) -> Result<CashFlowOut, String> {
-    use rust_decimal::prelude::FromStr;
-
-    let amount = Decimal::from_str(&input.amount).map_err(|e| format!("amount: {e}"))?;
-    if amount <= Decimal::ZERO {
-        return Err("amount must be > 0".into());
-    }
-
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-
-    let u = crate::db::equity::latest_units(&tx, input.account_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "no equity_units row".to_string())?;
-
-    let units = u.units.clone();
-    let nav = u.nav.clone();
-
-    let currency: String = tx
-        .query_row("SELECT currency FROM accounts WHERE id = ?1", [input.account_id], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-
-    // Fee: no units change (NAV units unaffected)
-    let cf_id = crate::db::equity::insert_cash_flow(
-        &tx,
-        input.account_id,
-        "fee",
-        &amount.to_string(),
-        &currency,
-        &nav,
-        &units,
-        &units,  // unchanged
-        input.note.as_deref(),
-    ).map_err(|e| e.to_string())?;
-
-    tx.commit().map_err(|e| e.to_string())?;
-
-    Ok(CashFlowOut {
-        cash_flow_id: cf_id,
-        units_row_id: u.id,
-        nav_before: nav.clone(),
-        nav_after: nav,
-        units_before: units.clone(),
-        units_after: units,
-        amount: amount.to_string(),
-        kind: "fee".into(),
-    })
-}
-
-#[tauri::command]
-pub fn equity_cashflow_list(
-    state: State<'_, AppState>,
-    account_id: i64,
-    limit: Option<i64>,
-) -> Result<Vec<crate::db::equity::CashFlowRow>, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let n = limit.unwrap_or(50).clamp(1, 500);
-    crate::db::equity::list_cash_flows(&conn, account_id, n)
-        .map_err(|e| e.to_string())
-}
-RUST_EOF
-
-cat /tmp/p3_cmds.rs >> src-tauri/src/commands/equity.rs
-echo "  ✓ cashflow commands appended"
-
-# Register in lib.rs
-python3 - <<'PY'
-import pathlib
-p = pathlib.Path("src-tauri/src/lib.rs")
-s = p.read_text()
-
-if "equity_cashflow_deposit" not in s:
-    anchor = "commands::equity::equity_instruments_list,"
-    if anchor in s:
-        s = s.replace(
-            anchor,
-            anchor + "\n            commands::equity::equity_cashflow_deposit,\n            commands::equity::equity_cashflow_withdraw,\n            commands::equity::equity_cashflow_fee,\n            commands::equity::equity_cashflow_list,"
-        )
-        p.write_text(s)
-        print("  ✓ registered in lib.rs")
-    else:
-        print("  WARN: lib.rs anchor not found")
-else:
-    print("  SKIP: already registered")
-PY
-
-# ============================================================
-# 4) equityApi.ts — types + helpers
-# ============================================================
-echo "==> [4/6] equityApi.ts — cashflow helpers"
-python3 - <<'PY'
-import pathlib
-p = pathlib.Path("src/lib/equityApi.ts")
-s = p.read_text()
-
-if "cashflowDeposit" in s:
-    print("  SKIP: helpers already present")
-else:
-    add = '''
+echo "==> [2/4] CSS"
+cat >> src/pages/EquityEngine/EquityEngine.css <<'CSS_EOF'
 
 /* ============================================================
- * CASH FLOW (PHASE 3)
+ * Cash Flow Card (PHASE 3-B)
  * ============================================================ */
 
-export interface CashFlowInput {
-  account_id: number;
-  amount: string;
-  note?: string | null;
+.ee-cashflow { padding: 16px 20px; }
+
+.ee-cf-form {
+  margin-bottom: 16px;
 }
 
-export interface CashFlowOut {
-  cash_flow_id: number;
-  units_row_id: number;
-  nav_before: string;
-  nav_after: string;
-  units_before: string;
-  units_after: string;
-  amount: string;
-  kind: string;
+.ee-cf-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  background: var(--bg-1, #11161d);
+  border: 1px solid var(--border, #232c38);
+  border-radius: 8px;
+  padding: 4px;
+  width: fit-content;
+}
+.ee-cf-tab {
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-1, #9aa7b4) !important;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.12s, color 0.12s;
+}
+.ee-cf-tab:hover {
+  color: var(--text-0, #e6edf3) !important;
+  background: var(--bg-2, #161d26) !important;
+}
+.ee-cf-tab.is-active {
+  background: var(--accent-soft, rgba(45, 212, 191, 0.12)) !important;
+  color: var(--accent, #2dd4bf) !important;
+  border: none !important;
 }
 
-export interface CashFlowRow {
-  id: number;
-  account_id: number;
-  kind: string;
-  amount: string;
-  currency: string;
-  occurred_at: string;
-  nav_before: string;
-  units_before: string;
-  units_after: string;
-  note: string | null;
+.ee-cf-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-export async function cashflowDeposit(input: CashFlowInput): Promise<CashFlowOut> {
-  return invoke<CashFlowOut>("equity_cashflow_deposit", { input });
+.ee-cf-label {
+  font-size: 12px;
+  color: var(--text-1, #9aa7b4);
+  font-weight: 500;
 }
 
-export async function cashflowWithdraw(input: CashFlowInput): Promise<CashFlowOut> {
-  return invoke<CashFlowOut>("equity_cashflow_withdraw", { input });
+.ee-cf-input {
+  background: var(--bg-2, #161d26);
+  color: var(--text-0, #e6edf3);
+  border: 1px solid var(--border, #232c38);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: var(--mono, ui-monospace, monospace);
+  min-width: 100px;
+}
+.ee-cf-input:focus {
+  outline: none;
+  border-color: var(--accent, #2dd4bf);
 }
 
-export async function cashflowFee(input: CashFlowInput): Promise<CashFlowOut> {
-  return invoke<CashFlowOut>("equity_cashflow_fee", { input });
+.ee-cf-list-wrap {
+  max-height: 300px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border, #232c38);
+}
+.ee-cf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.ee-cf-table thead {
+  position: sticky;
+  top: 0;
+  background: var(--bg-1, #11161d);
+  z-index: 1;
+}
+.ee-cf-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-1, #9aa7b4);
+  border-bottom: 1px solid var(--border, #232c38);
+}
+.ee-cf-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border, #232c38);
+  color: var(--text-0, #e6edf3);
+}
+.ee-cf-table tbody tr:hover {
+  background: var(--bg-2, #161d26);
 }
 
-export async function listCashFlows(accountId: number, limit = 50): Promise<CashFlowRow[]> {
-  return invoke<CashFlowRow[]>("equity_cashflow_list", { accountId, limit });
+.ee-cf-kind {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
-'''
-    anchor = "/* ============================================================\n *  DEFAULTS\n * ============================================================ */"
-    if anchor in s:
-        s = s.replace(anchor, add + "\n" + anchor)
-        p.write_text(s)
-        print("  ✓ types + helpers added")
+.ee-cf-kind--deposit {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+}
+.ee-cf-kind--withdrawal {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+.ee-cf-kind--fee {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.ee-cf-list-wrap::-webkit-scrollbar { width: 8px; }
+.ee-cf-list-wrap::-webkit-scrollbar-track { background: var(--bg-2, #161d26); border-radius: 4px; }
+.ee-cf-list-wrap::-webkit-scrollbar-thumb { background: var(--border, #232c38); border-radius: 4px; }
+
+/* Light theme */
+[data-theme="light"] .ee-cf-tabs { background: #f1f5f9; border-color: #cbd5e1; }
+[data-theme="light"] .ee-cf-tab { color: #475569 !important; }
+[data-theme="light"] .ee-cf-tab:hover { color: #0f172a !important; background: #e2e8f0 !important; }
+[data-theme="light"] .ee-cf-tab.is-active { background: #cffafe !important; color: #0891b2 !important; }
+[data-theme="light"] .ee-cf-label { color: #475569; }
+[data-theme="light"] .ee-cf-input { background: #ffffff; color: #0f172a; border-color: #cbd5e1; }
+[data-theme="light"] .ee-cf-table thead { background: #f1f5f9; }
+[data-theme="light"] .ee-cf-table th { color: #475569; }
+[data-theme="light"] .ee-cf-table td { color: #0f172a; border-color: #e2e8f0; }
+[data-theme="light"] .ee-cf-kind--deposit { background: #d1fae5; color: #065f46; }
+[data-theme="light"] .ee-cf-kind--withdrawal { background: #fef3c7; color: #92400e; }
+[data-theme="light"] .ee-cf-kind--fee { background: #fee2e2; color: #991b1b; }
+
+/* Cream theme */
+[data-theme="cream"] .ee-cf-tabs { background: #efe7d8; border-color: #e0d6c2; }
+[data-theme="cream"] .ee-cf-tab { color: #4a3f2e !important; }
+[data-theme="cream"] .ee-cf-tab:hover { color: #2e2418 !important; background: #e5dbc8 !important; }
+[data-theme="cream"] .ee-cf-tab.is-active { background: #d4ecec !important; color: #0e7490 !important; }
+[data-theme="cream"] .ee-cf-label { color: #4a3f2e; }
+[data-theme="cream"] .ee-cf-input { background: #faf6ed; color: #2e2418; border-color: #c8bca1; }
+[data-theme="cream"] .ee-cf-table thead { background: #efe7d8; }
+[data-theme="cream"] .ee-cf-table th { color: #4a3f2e; }
+[data-theme="cream"] .ee-cf-table td { color: #2e2418; border-color: #e0d6c2; }
+[data-theme="cream"] .ee-cf-kind--deposit { background: #d1e7d0; color: #14532d; }
+[data-theme="cream"] .ee-cf-kind--withdrawal { background: #f5e0b0; color: #78350f; }
+[data-theme="cream"] .ee-cf-kind--fee { background: #f5cfcf; color: #7f1d1d; }
+CSS_EOF
+echo "  ✓ CSS added"
+
+# ============================================================
+# 3) Wire into EquityEngine
+# ============================================================
+echo "==> [3/4] Wire into EquityEngine"
+python3 - <<'PY'
+import pathlib, re, sys
+p = pathlib.Path("src/pages/EquityEngine/EquityEngine.tsx")
+s = p.read_text()
+
+# 1. Add import
+if "CashFlowCard" not in s:
+    s = s.replace(
+        'import { InstrumentsCard } from "./InstrumentsCard";',
+        'import { InstrumentsCard } from "./InstrumentsCard";\nimport { CashFlowCard } from "./CashFlowCard";'
+    )
+    print("  ✓ import added")
+
+# 2. Get active account id from state
+# The component already has `selectedAccountId` or `activeAccountId`
+# Add <CashFlowCard accountId={...} /> after InstrumentsCard
+anchor = "<InstrumentsCard />"
+if anchor in s and "<CashFlowCard" not in s:
+    idx = s.find(anchor)
+    line_end = s.find("\n", idx)
+    # Determine account id variable name — look for `activeId` or `selectedAccountId`
+    # Fallback: use `selectedAccountId || activeAccountId || 1`
+    account_expr = "{selectedAccountId ?? 1}"
+    if "const [selectedAccountId" in s or "selectedAccountId" in s:
+        account_expr = "{selectedAccountId ?? 1}"
+    elif "activeAccountId" in s:
+        account_expr = "{activeAccountId}"
     else:
-        print("  WARN: DEFAULTS anchor not found")
+        # Try to find the actual variable
+        import re as _re
+        m = _re.search(r'const \[(\w*[Aa]ccount\w*Id)\s*,', s)
+        if m:
+            account_expr = "{" + m.group(1) + " ?? 1}"
+        else:
+            account_expr = "{1}"
+    
+    s = s[:line_end+1] + f"        <CashFlowCard accountId={account_expr} />\n" + s[line_end+1:]
+    print(f"  ✓ CashFlowCard wired (accountId={account_expr})")
+
+p.write_text(s)
 PY
 
 # ============================================================
-# 5) cargo check
+# 4) Build
 # ============================================================
-echo "==> [5/6] cargo check"
-( cd src-tauri && cargo check 2>&1 | tee /tmp/p3a_check.log | tail -12 )
+echo "==> [4/4] Build"
+( cd src-tauri && cargo check 2>&1 | grep -E "^error" | head -5 )
 RC=${PIPESTATUS[0]:-$?}
-echo "check exit: $RC"
-
 if [ "$RC" -ne 0 ]; then
-    echo ""
-    echo "=== Errors ==="
-    grep -E "^error" -A5 /tmp/p3a_check.log | head -30
+    echo "FATAL: cargo check"
+    exit 4
+fi
+npm run build 2>&1 | tail -10
+RC=${PIPESTATUS[0]:-$?}
+if [ "$RC" -ne 0 ]; then
+    echo "FATAL: npm build"
     exit 4
 fi
 
-# ============================================================
-# 6) npm run build
-# ============================================================
-echo "==> [6/6] npm run build"
-npm run build 2>&1 | tail -8
-
 echo ""
 echo "============================================================"
-echo "PHASE 3-A COMPLETE"
-echo "  ✓ MIGRATION_028: baseline equity_units for accounts"
-echo "  ✓ db/equity.rs: units + cashflow helpers"
-echo "  ✓ Tauri: deposit/withdraw/fee/list"
-echo "  ✓ equityApi.ts: types + helpers"
+echo "PHASE 3-B COMPLETE"
+echo "  ✓ CashFlowCard.tsx"
+echo "  ✓ CSS (all 5 themes)"
+echo "  ✓ Wired into EquityEngine"
 echo "  Backup: $BK"
-echo "  Next: open app once to run migration 028"
 echo "============================================================"
