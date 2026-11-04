@@ -65,7 +65,7 @@ export function NewTradeCard({
         entry,
         stop,
         take_profit: tp || null,
-        contract_multiplier: implied.multiplier.toFixed(10),
+        contract_multiplier: String(Math.round(implied.multiplier)),
         commission_per_unit: "0",
         slippage_buffer: "0",
       });

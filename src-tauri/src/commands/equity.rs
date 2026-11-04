@@ -7,7 +7,6 @@ use crate::equity::{
     config::EquityConfig,
     engine::{evaluate, TradeProposal},
     error::{DecisionReason, EquityError},
-    risk_engine::{m_dd, m_loss},
     state::{AccountPhase, AccountState, EquitySnapshot},
     TradeDecision,
 };
@@ -209,7 +208,7 @@ pub fn equity_snapshot_create(
         taken_at: taken_at.clone(),
     };
     let parsed = snap_domain.parse().map_err(|e: String| format!("snapshot parse: {e}"))?;
-    let acct_state = AccountState::from_snapshot(parsed, &cfg)
+    let acct_state = AccountState::from_snapshot_with_profile(parsed, &cfg, None)
         .map_err(|e| format!("AccountState: {e}"))?;
 
     let phase_s = phase_str(acct_state.phase).to_string();
@@ -277,7 +276,18 @@ pub fn equity_evaluate(
         taken_at: snap_row.taken_at.clone(),
     };
     let parsed = snap_domain.parse().map_err(|e| format!("snapshot: {e}"))?;
-    let state_acct = AccountState::from_snapshot(parsed, &cfg)
+    let profile_opt = {
+        let aid = account_id.unwrap_or_else(|| {
+            // fallback: use active account
+            0
+        });
+        if aid > 0 {
+            crate::db::profiles::get(&conn, aid).map_err(|e| e.to_string())?
+        } else {
+            None
+        }
+    };
+    let state_acct = AccountState::from_snapshot_with_profile(parsed, &cfg, profile_opt.as_ref())
         .map_err(|e| format!("state: {e}"))?;
 
     // 2. Build proposal (clone original for later risk_detail)
@@ -311,11 +321,7 @@ pub fn equity_evaluate(
     };
     // Determine risk_reduced: adaptive > allowed means we cut risk
     let risk_reduced = match &decision.risk_detail {
-        Some(r) => {
-            let adaptive = r.r_adaptive;
-            let allowed = r.r_allowed;
-            adaptive > allowed
-        }
+        Some(r) => r.r_target > r.r_allowed,
         None => false,
     };
     let phase_for_db = phase_str(state_acct.phase).to_string();
@@ -338,8 +344,6 @@ pub fn equity_evaluate(
     let _ = repo::insert_decision(&conn, &drow);
 
     // 5. Build output
-    let _ = m_dd(&state_acct, &cfg);
-    let _ = m_loss(0, &cfg);
 
     let state_s = state_acct.state_enum.as_str().to_string();
     Ok(DecisionOut {
@@ -377,12 +381,12 @@ pub fn equity_evaluate(
             RiskDetail {
                 equity: state_acct.snapshot.equity.to_string(),
                 r_base: r.r_base.to_string(),
-                m_dd: r.m_dd.to_string(),
-                m_loss: r.m_loss.to_string(),
-                r_adaptive: r.r_adaptive.to_string(),
+                m_dd: "1".into(),
+                m_loss: "1".into(),
+                r_adaptive: r.r_target.to_string(),
                 r_portfolio_cap: r.r_portfolio_cap.to_string(),
                 r_daily_cap: r.r_daily_cap.to_string(),
-                r_floor_cap: r.r_floor_cap.to_string(),
+                r_floor_cap: r.r_buffer.to_string(),
                 r_prop_cap: r.r_prop_cap.to_string(),
                 r_allowed: r.r_allowed.to_string(),
                 entry_minus_stop: ems.to_string(),
@@ -643,8 +647,13 @@ pub fn equity_auto_snapshot_create(
         consecutive_losses: streak,
         taken_at: chrono::Utc::now(),
     };
-    let acct_state = crate::equity::state::AccountState::from_snapshot(parsed_for_state, &cfg)
-        .map_err(|e| format!("AccountState: {}", e))?;
+    let profile_opt = {
+        let conn2 = state.db.lock().map_err(|e| e.to_string())?;
+        crate::db::profiles::get(&conn2, acc_id).map_err(|e| e.to_string())?
+    };
+    let acct_state = crate::equity::state::AccountState::from_snapshot_with_profile(
+        parsed_for_state, &cfg, profile_opt.as_ref()
+    ).map_err(|e| format!("AccountState: {}", e))?;
 
     let protected_profit = acct_state.profit_retention;
     let f_hybrid = acct_state.f_hybrid;
@@ -996,52 +1005,45 @@ pub fn equity_cleanup_old_snapshots(
 
 #[derive(Debug, Serialize)]
 pub struct RiskPreview {
+    // Account state
     pub equity: String,
     pub initial_balance: String,
     pub high_watermark: String,
     pub net_profit: String,
     pub dd_pct: String,
-    pub phase: String,
-    pub loss_capacity: String,
-    pub profit_retention: String,
-    pub f_profit: String,
-    pub f_trail: String,
-    pub f_prop: String,
-    pub f_hybrid: String,
-    // ---- new (S8) ----
     pub state: String,
     pub state_enum: String,
+
+    // Floors
+    pub f_profit: String,
+    pub f_trail: String,
+    pub f_internal: String,
+    pub f_prop: String,
+    pub profit_retention: String,
+    pub loss_capacity: String,
+
+    // Buffer
+    pub buffer: String,
     pub buffer_r: String,
     pub m_preserve: String,
-    pub f_internal: String,
+    pub execution_buffer: String,
 
-    // Risk breakdown
+    // Risk
     pub r_base: String,
-    pub m_dd: String,
-    pub m_loss: String,
-    pub r_adaptive: String,
-
-    // Caps
+    pub r_target: String,
+    pub r_buffer: String,
     pub r_portfolio_cap: String,
     pub r_daily_cap: String,
-    pub r_floor_cap: String,
     pub r_prop_cap: String,
-
-    // Final
     pub r_allowed: String,
-    pub binding_constraint: String, // "BaseRate" | "Portfolio" | "Daily" | "Floor" | "Prop"
+    pub binding_constraint: String,
 
-    // Config (for display)
+    // Config
     pub r0_pct: String,
-    pub dd_1_pct: String,
-    pub dd_2_pct: String,
-    pub dd_3_pct: String,
-    pub m_dd_1: String,
-    pub m_dd_2: String,
-    pub m_dd_3: String,
-    pub m_dd_4: String,
-    pub m_loss_table: String,
-    pub n_max: i64,
+    pub profit_activation: String,
+    pub profit_full: String,
+    pub max_retention: String,
+    pub trailing_dd: String,
     pub alpha_pct: String,
     pub daily_limit: String,
     pub portfolio_max: String,
@@ -1058,7 +1060,8 @@ pub fn equity_preview_risk(
     state: State<'_, AppState>,
     account_id: Option<i64>,
 ) -> Result<RiskPreview, String> {
-    use crate::equity::risk_engine::compute_risk;
+    use crate::equity::buffer::{self, BufferInput};
+    use crate::equity::risk_engine::{self, RiskInput};
 
     let cfg = load_or_default_config(&state)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -1079,74 +1082,107 @@ pub fn equity_preview_risk(
         taken_at: snap_row.taken_at.clone(),
     };
     let parsed = snap_domain.parse().map_err(|e| format!("snapshot: {e}"))?;
-    let acct_state = AccountState::from_snapshot(parsed, &cfg)
+    let profile_opt = match account_id {
+        Some(aid) => {
+            let conn2 = state.db.lock().map_err(|e| e.to_string())?;
+            let p = crate::db::profiles::get(&conn2, aid).map_err(|e| e.to_string())?;
+            drop(conn2);
+            p
+        }
+        None => None,
+    };
+    let acct_state = AccountState::from_snapshot_with_profile(parsed, &cfg, profile_opt.as_ref())
         .map_err(|e| format!("state: {e}"))?;
 
-    let risk = compute_risk(&acct_state, &cfg).map_err(|e| e.to_string())?;
+    let r0 = Decimal::from_str(&cfg.r0).unwrap_or(Decimal::new(1, 2));
+    let r_base = acct_state.snapshot.equity * r0;
 
-    // Determine binding constraint
-    let mut binding = "BaseRate";
-    let mut best = risk.r_adaptive;
-    if risk.r_portfolio_cap < best {
-        best = risk.r_portfolio_cap;
-        binding = "Portfolio";
-    }
-    if risk.r_daily_cap < best {
-        best = risk.r_daily_cap;
-        binding = "Daily";
-    }
-    if risk.r_floor_cap < best {
-        best = risk.r_floor_cap;
-        binding = "Floor";
-    }
-    if risk.r_prop_cap < best {
-        best = risk.r_prop_cap;
-        binding = "Prop";
-    }
+    let buf = buffer::compute(&BufferInput {
+        equity: acct_state.snapshot.equity,
+        f_internal: acct_state.f_internal,
+        r_open: acct_state.snapshot.open_portfolio_risk,
+        execution_buffer: Decimal::ZERO,
+        r_base,
+    });
+
+    let portfolio_max = Decimal::from_str(&cfg.r_portfolio_max).unwrap_or(Decimal::ZERO);
+    let daily_limit = Decimal::from_str(&cfg.daily_loss_limit).unwrap_or(Decimal::ZERO);
+    let prop_max = Decimal::from_str(&cfg.r_prop_max).unwrap_or(Decimal::ZERO);
+
+    let r_portfolio_remaining = if portfolio_max.is_zero() {
+        Decimal::MAX
+    } else {
+        (acct_state.snapshot.equity * portfolio_max - acct_state.snapshot.open_portfolio_risk).max(Decimal::ZERO)
+    };
+    let r_daily_remaining = if daily_limit.is_zero() {
+        Decimal::MAX
+    } else {
+        (acct_state.snapshot.equity * daily_limit - acct_state.snapshot.daily_loss).max(Decimal::ZERO)
+    };
+    let r_prop_remaining = if prop_max.is_zero() {
+        Decimal::MAX
+    } else {
+        acct_state.snapshot.equity * prop_max
+    };
+
+    let risk = risk_engine::compute(&RiskInput {
+        equity: acct_state.snapshot.equity,
+        r_base_pct: r0,
+        m_preserve: buf.m_preserve,
+        r_buffer: buf.r_buffer,
+        r_portfolio_remaining,
+        r_daily_remaining,
+        r_prop_remaining,
+    });
 
     let rp_state = acct_state.state_enum.as_str().to_string();
+
+    // Display caps: MAX → r_target (so UI shows sensible values)
+    let disp = |v: Decimal| -> String {
+        if v == Decimal::MAX { risk.r_target.to_string() } else { v.to_string() }
+    };
+
+    let f_profit_str = if acct_state.f_profit.is_zero() {
+        String::new() // empty = not active
+    } else {
+        acct_state.f_profit.to_string()
+    };
+
     Ok(RiskPreview {
         equity: acct_state.snapshot.equity.to_string(),
         initial_balance: acct_state.snapshot.initial_balance.to_string(),
         high_watermark: acct_state.snapshot.high_watermark.to_string(),
         net_profit: acct_state.net_profit.to_string(),
         dd_pct: acct_state.dd_pct.to_string(),
-        phase: phase_str(acct_state.phase).to_string(),
-        loss_capacity: acct_state.loss_capacity.to_string(),
-        profit_retention: acct_state.profit_retention.to_string(),
-        f_profit: acct_state.f_profit.to_string(),
-        f_trail: acct_state.f_trail.to_string(),
-        f_prop: acct_state.f_prop.to_string(),
-        f_hybrid: acct_state.f_hybrid.to_string(),
         state: rp_state.clone(),
         state_enum: rp_state,
-        buffer_r: acct_state.buffer_r.to_string(),
-        m_preserve: acct_state.m_preserve.to_string(),
+
+        f_profit: f_profit_str,
+        f_trail: acct_state.f_trail.to_string(),
         f_internal: acct_state.f_internal.to_string(),
+        f_prop: acct_state.f_prop.to_string(),
+        profit_retention: acct_state.profit_retention.to_string(),
+        loss_capacity: acct_state.loss_capacity.to_string(),
+
+        buffer: buf.b.to_string(),
+        buffer_r: buf.buffer_r.to_string(),
+        m_preserve: buf.m_preserve.to_string(),
+        execution_buffer: "0".into(),
 
         r_base: risk.r_base.to_string(),
-        m_dd: risk.m_dd.to_string(),
-        m_loss: risk.m_loss.to_string(),
-        r_adaptive: risk.r_adaptive.to_string(),
-
-        r_portfolio_cap: risk.r_portfolio_cap.to_string(),
-        r_daily_cap: risk.r_daily_cap.to_string(),
-        r_floor_cap: risk.r_floor_cap.to_string(),
-        r_prop_cap: risk.r_prop_cap.to_string(),
-
+        r_target: risk.r_target.to_string(),
+        r_buffer: risk.r_buffer.to_string(),
+        r_portfolio_cap: disp(risk.r_portfolio_cap),
+        r_daily_cap: disp(risk.r_daily_cap),
+        r_prop_cap: disp(risk.r_prop_cap),
         r_allowed: risk.r_allowed.to_string(),
-        binding_constraint: binding.into(),
+        binding_constraint: risk.binding.to_string(),
 
         r0_pct: cfg.r0.clone(),
-        dd_1_pct: cfg.dd_1.clone(),
-        dd_2_pct: cfg.dd_2.clone(),
-        dd_3_pct: cfg.dd_3.clone(),
-        m_dd_1: cfg.m_dd_1.clone(),
-        m_dd_2: cfg.m_dd_2.clone(),
-        m_dd_3: cfg.m_dd_3.clone(),
-        m_dd_4: cfg.m_dd_4.clone(),
-        m_loss_table: cfg.m_loss_table.clone(),
-        n_max: cfg.n_max,
+        profit_activation: cfg.profit_protect_activation.clone(),
+        profit_full: cfg.profit_protect_full.clone(),
+        max_retention: cfg.max_profit_retention.clone(),
+        trailing_dd: cfg.trailing_dd_pct.clone(),
         alpha_pct: cfg.alpha.clone(),
         daily_limit: cfg.daily_loss_limit.clone(),
         portfolio_max: cfg.r_portfolio_max.clone(),
@@ -1155,5 +1191,97 @@ pub fn equity_preview_risk(
         open_portfolio_risk: acct_state.snapshot.open_portfolio_risk.to_string(),
         daily_loss: acct_state.snapshot.daily_loss.to_string(),
         consecutive_losses: acct_state.snapshot.consecutive_losses,
+    })
+}
+
+
+// ============================================================
+// S15 — account profile (adaptive presets)
+// ============================================================
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ProfileInputDto {
+    pub account_type: String,
+    pub profit_target_pct: String,
+    pub max_dd_pct: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ProfileOut {
+    pub account_id: i64,
+    pub account_type: String,
+    pub profit_target_pct: String,
+    pub max_dd_pct: String,
+    pub profit_protect_activation: String,
+    pub profit_protect_full: String,
+    pub max_profit_retention: String,
+    pub trailing_dd_pct: String,
+}
+
+#[tauri::command]
+pub fn equity_profile_get(
+    state: State<'_, AppState>,
+    account_id: i64,
+) -> Result<Option<ProfileOut>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let row = crate::db::profiles::get(&conn, account_id).map_err(|e| e.to_string())?;
+    Ok(row.map(|r| ProfileOut {
+        account_id: r.account_id,
+        account_type: r.account_type,
+        profit_target_pct: r.profit_target_pct,
+        max_dd_pct: r.max_dd_pct,
+        profit_protect_activation: r.profit_protect_activation,
+        profit_protect_full: r.profit_protect_full,
+        max_profit_retention: r.max_profit_retention,
+        trailing_dd_pct: r.trailing_dd_pct,
+    }))
+}
+
+#[tauri::command]
+pub fn equity_profile_set(
+    state: State<'_, AppState>,
+    account_id: i64,
+    input: ProfileInputDto,
+) -> Result<ProfileOut, String> {
+    use crate::equity::profile::{derive, AccountType, ProfileInput};
+    use rust_decimal::prelude::FromStr;
+
+    let at = AccountType::parse(&input.account_type)?;
+    let target = Decimal::from_str(&input.profit_target_pct)
+        .map_err(|e| format!("profit_target_pct: {e}"))?;
+    let dd = Decimal::from_str(&input.max_dd_pct)
+        .map_err(|e| format!("max_dd_pct: {e}"))?;
+
+    let derived = derive(&ProfileInput {
+        account_type: at,
+        profit_target_pct: target,
+        max_dd_pct: dd,
+    })?;
+
+    let row = crate::db::profiles::AccountProfileRow {
+        account_id,
+        account_type: at.as_str().to_string(),
+        profit_target_pct: target.to_string(),
+        max_dd_pct: dd.to_string(),
+        profit_protect_activation: derived.profit_protect_activation.to_string(),
+        profit_protect_full: derived.profit_protect_full.to_string(),
+        max_profit_retention: derived.max_profit_retention.to_string(),
+        trailing_dd_pct: derived.trailing_dd_pct.to_string(),
+    };
+
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    crate::db::profiles::upsert(&tx, &row).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(ProfileOut {
+        account_id,
+        account_type: row.account_type,
+        profit_target_pct: row.profit_target_pct,
+        max_dd_pct: row.max_dd_pct,
+        profit_protect_activation: row.profit_protect_activation,
+        profit_protect_full: row.profit_protect_full,
+        max_profit_retention: row.max_profit_retention,
+        trailing_dd_pct: row.trailing_dd_pct,
     })
 }

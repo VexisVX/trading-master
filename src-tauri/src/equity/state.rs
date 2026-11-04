@@ -2,6 +2,7 @@
 //! All money fields are Decimal strings (Decimal-safe over the wire).
 
 use chrono::{DateTime, Utc};
+pub use super::state_machine::State;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::FromStr;
 use serde::{Deserialize, Serialize};
@@ -110,15 +111,20 @@ impl AccountState {
         snapshot: ParsedSnapshot,
         config: &crate::equity::EquityConfig,
     ) -> Result<Self, String> {
+        Self::from_snapshot_with_profile(snapshot, config, None)
+    }
+
+    /// Profile-aware variant: if `profile` is Some, use its derived values
+    /// for profit protection / trailing DD instead of the global config.
+    pub fn from_snapshot_with_profile(
+        snapshot: ParsedSnapshot,
+        config: &crate::equity::EquityConfig,
+        profile: Option<&crate::db::profiles::AccountProfileRow>,
+    ) -> Result<Self, String> {
         let d = |s: &str, name: &str| -> Result<Decimal, String> {
             Decimal::from_str(s).map_err(|e| format!("{name}: {e}"))
         };
-        let q = d(&config.q_retention, "q_retention")?;
-        let d_trail = d(&config.d_trailing, "d_trailing")?;
-        let d_prop = d(&config.d_prop, "d_prop")?;
-        let dd_1 = d(&config.dd_1, "dd_1")?;
-        let dd_2 = d(&config.dd_2, "dd_2")?;
-        let dd_3 = d(&config.dd_3, "dd_3")?;
+        let d_prop = d(&config.d_prop, "d_prop").unwrap_or(Decimal::ZERO);
 
         // Net profit
         let net_profit = snapshot.equity - snapshot.initial_balance;
@@ -144,7 +150,13 @@ impl AccountState {
             Decimal::ONE
         };
 
-        let prot_cfg = crate::equity::protection::ProtectionConfig::default_v1();
+        let mut prot_cfg = crate::equity::protection::ProtectionConfig::default_v1();
+        if let Some(p) = profile {
+            if let Ok(v) = Decimal::from_str(&p.profit_protect_activation) { prot_cfg.profit_protect_activation = v; }
+            if let Ok(v) = Decimal::from_str(&p.profit_protect_full)       { prot_cfg.profit_protect_full = v; }
+            if let Ok(v) = Decimal::from_str(&p.max_profit_retention)      { prot_cfg.max_profit_retention = v; }
+            if let Ok(v) = Decimal::from_str(&p.trailing_dd_pct)           { prot_cfg.trailing_dd_pct = v; }
+        }
         let prot = crate::equity::protection::compute(
             snapshot.initial_balance,
             nav_hwm,

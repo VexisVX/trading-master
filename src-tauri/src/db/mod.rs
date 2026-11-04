@@ -20,6 +20,7 @@ pub mod csv_export;
 
 pub mod live_presets;
 pub mod prop_firm;
+pub mod profiles;
 pub mod risk_settings;
 pub mod strategies;
 pub mod trading_plans;
@@ -72,7 +73,7 @@ fn set_version(conn: &Connection, v: i64) -> Result<(), DbError> {
     Ok(())
 }
 
-const CURRENT_VERSION: i64 = 22;
+const CURRENT_VERSION: i64 = 23;
 
 fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     let mut v = current_version(conn)?;
@@ -105,6 +106,7 @@ fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     if v < 20 { conn.execute_batch(MIGRATION_020)?; set_version(conn, 20)?; v = 20; }
     if v < 21 { conn.execute_batch(MIGRATION_021)?; set_version(conn, 21)?; v = 21; }
     if v < 22 { conn.execute_batch(MIGRATION_022)?; set_version(conn, 22)?; v = 22; }
+    if v < 23 { conn.execute_batch(MIGRATION_023)?; set_version(conn, 23)?; v = 23; }
     let _ = v;
 
     Ok(())
@@ -445,6 +447,22 @@ CREATE TABLE IF NOT EXISTS instruments (
   updated_at            TEXT NOT NULL
 );
 "#;
+
+const MIGRATION_023: &str = r#"
+CREATE TABLE IF NOT EXISTS account_profiles (
+  account_id           INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  account_type         TEXT NOT NULL DEFAULT 'personal' CHECK (account_type IN ('personal','prop_firm')),
+  profit_target_pct    TEXT NOT NULL DEFAULT '0',
+  max_dd_pct           TEXT NOT NULL DEFAULT '0',
+  -- derived (computed from target & dd, stored so they survive config reloads)
+  profit_protect_activation TEXT NOT NULL DEFAULT '0.05',
+  profit_protect_full       TEXT NOT NULL DEFAULT '0.10',
+  max_profit_retention      TEXT NOT NULL DEFAULT '0.40',
+  trailing_dd_pct           TEXT NOT NULL DEFAULT '0.10',
+  updated_at           TEXT NOT NULL
+);
+"#;
+
 
 
 

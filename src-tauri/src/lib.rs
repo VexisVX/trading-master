@@ -50,6 +50,8 @@ pub fn run() {
             commands::equity::equity_cleanup_old_snapshots,
             commands::equity::equity_auto_snapshot_create,
             commands::equity::equity_decisions_list,
+            commands::equity::equity_profile_get,
+            commands::equity::equity_profile_set,
             commands::equity::equity_decision_record,
             commands::backtest::backtest_trades_list,
             commands::backtest::backtest_trade_create,

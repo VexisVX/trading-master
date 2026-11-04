@@ -3,258 +3,188 @@ set -euo pipefail
 
 if [ -f "src-tauri/Cargo.toml" ]; then PROJECT_DIR="$(pwd)"
 elif [ -d "trading-manager" ]; then PROJECT_DIR="$(pwd)/trading-manager"
-else echo "ERROR"; exit 1; fi
+else echo "FATAL"; exit 1; fi
 cd "${PROJECT_DIR}"
 
+# ---------- 0) verify ----------
+echo "==> [0/5] Verify state"
 DB="$HOME/.local/share/com.trading.manager/app.db"
-BACKUP_DIR="$HOME/.local/share/com.trading.manager/backups"
-mkdir -p "$BACKUP_DIR"
-if [ -f "$DB" ]; then
-  STAMP="$(date +%Y%m%d_%H%M%S)"
-  cp -v "$DB" "$BACKUP_DIR/pre_s12a_${STAMP}.db"
+VER="$(sqlite3 "$DB" "SELECT value FROM app_meta WHERE key='schema_version';")"
+[ "$VER" = "23" ] || { echo "FATAL: schema_version=$VER"; exit 2; }
+echo "  ✓ schema_version=23"
+
+if ! grep -q "pub struct AccountProfileRow" src-tauri/src/db/profiles.rs; then
+  echo "FATAL: AccountProfileRow missing"; exit 2
 fi
+echo "  ✓ AccountProfileRow present"
 
-# ---------- 1) rewrite config.rs ----------
-cat > src-tauri/src/equity/config.rs <<'RUST_EOF'
-//! User-tunable parameters for the v2 equity engine.
-//!
-//! All Decimals are stored as strings in SQLite, parsed to Decimal in Rust.
-//! Legacy fields from v1 (r_min, delta_r, q_retention, d_trailing, dd_1..3,
-//! m_dd_1..4, m_loss_table, n_max, mu_max, recovery_target) are silently
-//! ignored by serde when present in old JSON configs.
+# ---------- 1) WAL-safe backup ----------
+echo "==> [1/5] Backup"
+BD="$HOME/.local/share/com.trading.manager/backups"
+mkdir -p "$BD"
+STAMP="$(date +%Y%m%d_%H%M%S)"
+BK="$BD/pre_s16_${STAMP}.db"
+sqlite3 "$DB" ".backup '$BK'"
+INTEG="$(sqlite3 "$BK" 'PRAGMA integrity_check;' || true)"
+[ "$INTEG" = "ok" ] || { echo "FATAL: integrity: $INTEG"; exit 3; }
+echo "  ✓ $BK"
 
-use rust_decimal::Decimal;
-use rust_decimal::prelude::FromStr;
-use serde::{Deserialize, Serialize};
+# ---------- 2) patch state.rs — from_snapshot signature ----------
+echo "==> [2/5] Patching state.rs"
+python3 - <<'PY'
+import pathlib, sys
+p = pathlib.Path("src-tauri/src/equity/state.rs")
+s = p.read_text()
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EquityConfig {
-    // ---- Risk baseline ----
-    /// R_0 — base risk fraction of equity per trade (0.01 = 1%).
-    pub r0: String,
+# 2a) Change signature
+old_sig = '''    pub fn from_snapshot(
+        snapshot: ParsedSnapshot,
+        config: &crate::equity::EquityConfig,
+    ) -> Result<Self, String> {'''
+new_sig = '''    pub fn from_snapshot(
+        snapshot: ParsedSnapshot,
+        config: &crate::equity::EquityConfig,
+    ) -> Result<Self, String> {
+        Self::from_snapshot_with_profile(snapshot, config, None)
+    }
 
-    // ---- Profit protection (smoothstep) ----
-    /// NAV growth at which F_profit activates (e.g. 0.05 = 5%).
-    #[serde(default = "def_profit_activation")]
-    pub profit_protect_activation: String,
-    /// NAV growth at which F_profit reaches max retention (e.g. 0.10 = 10%).
-    #[serde(default = "def_profit_full")]
-    pub profit_protect_full: String,
-    /// Max fraction of profit kept as protected (e.g. 0.40 = 40%).
-    #[serde(default = "def_max_retention")]
-    pub max_profit_retention: String,
-    /// Internal trailing DD from NAV HWM (e.g. 0.10 = 10%).
-    #[serde(default = "def_trailing_dd")]
-    pub trailing_dd_pct: String,
+    /// Profile-aware variant: if `profile` is Some, use its derived values
+    /// for profit protection / trailing DD instead of the global config.
+    pub fn from_snapshot_with_profile(
+        snapshot: ParsedSnapshot,
+        config: &crate::equity::EquityConfig,
+        profile: Option<&crate::db::profiles::AccountProfileRow>,
+    ) -> Result<Self, String> {'''
+if old_sig not in s:
+    raise SystemExit("from_snapshot signature not found")
+s = s.replace(old_sig, new_sig)
 
-    // ---- Prop-firm drawdown (independent of F_internal) ----
-    /// Legacy D_prop (money). Kept for backward compat; 0 = disabled.
-    #[serde(default)]
-    pub d_prop: String,
-
-    // ---- Risk capacity ----
-    /// Alpha — fraction of loss capacity that can be risked.
-    #[serde(default = "def_alpha")]
-    pub alpha: String,
-    /// Daily loss limit as fraction of equity (0 = disabled).
-    #[serde(default)]
-    pub daily_loss_limit: String,
-    /// Portfolio max risk as fraction of equity (0 = disabled).
-    #[serde(default)]
-    pub r_portfolio_max: String,
-    /// Per-trade prop max as fraction of equity (0 = disabled).
-    #[serde(default)]
-    pub r_prop_max: String,
-
-    // ---- Execution buffer (audit §6) ----
-    /// Slippage reserve as fraction of equity (e.g. 0.001 = 0.1%).
-    #[serde(default = "def_exec_buffer")]
-    pub execution_buffer_pct: String,
-
-    // ---- Recovery ----
-    /// Probe risk fraction of R_base when in RecoveryMode (e.g. 0.25 = 25%).
-    #[serde(default = "def_recovery_probe")]
-    pub recovery_probe_pct: String,
-
-    // ---- Snapshot policy ----
-    #[serde(default = "def_max_age")]
-    pub max_snapshot_age_hours: i64,
-
-    // ---- Legacy fields (accepted but ignored) ----
-    #[serde(default, skip_serializing)]
-    pub r_min: String,
-    #[serde(default, skip_serializing)]
-    pub delta_r: String,
-    #[serde(default, skip_serializing)]
-    pub dd_1: String,
-    #[serde(default, skip_serializing)]
-    pub dd_2: String,
-    #[serde(default, skip_serializing)]
-    pub dd_3: String,
-    #[serde(default, skip_serializing)]
-    pub m_dd_1: String,
-    #[serde(default, skip_serializing)]
-    pub m_dd_2: String,
-    #[serde(default, skip_serializing)]
-    pub m_dd_3: String,
-    #[serde(default, skip_serializing)]
-    pub m_dd_4: String,
-    #[serde(default, skip_serializing)]
-    pub m_loss_table: String,
-    #[serde(default, skip_serializing)]
-    pub n_max: i64,
-    #[serde(default, skip_serializing)]
-    pub q_retention: String,
-    #[serde(default, skip_serializing)]
-    pub d_trailing: String,
-    #[serde(default, skip_serializing)]
-    pub mu_max: String,
-    #[serde(default, skip_serializing)]
-    pub recovery_target: String,
-}
-
-fn def_profit_activation() -> String { "0.05".into() }
-fn def_profit_full() -> String { "0.10".into() }
-fn def_max_retention() -> String { "0.40".into() }
-fn def_trailing_dd() -> String { "0.10".into() }
-fn def_alpha() -> String { "0.5".into() }
-fn def_exec_buffer() -> String { "0.001".into() }
-fn def_recovery_probe() -> String { "0.25".into() }
-fn def_max_age() -> i64 { 24 }
-
-impl EquityConfig {
-    pub fn default_v2() -> Self {
-        Self {
-            r0: "0.01".into(),
-            profit_protect_activation: "0.05".into(),
-            profit_protect_full: "0.10".into(),
-            max_profit_retention: "0.40".into(),
-            trailing_dd_pct: "0.10".into(),
-            d_prop: "0".into(),
-            alpha: "0.5".into(),
-            daily_loss_limit: "0".into(),
-            r_portfolio_max: "0".into(),
-            r_prop_max: "0".into(),
-            execution_buffer_pct: "0.001".into(),
-            recovery_probe_pct: "0.25".into(),
-            max_snapshot_age_hours: 24,
-            // legacy
-            r_min: String::new(),
-            delta_r: String::new(),
-            dd_1: String::new(),
-            dd_2: String::new(),
-            dd_3: String::new(),
-            m_dd_1: String::new(),
-            m_dd_2: String::new(),
-            m_dd_3: String::new(),
-            m_dd_4: String::new(),
-            m_loss_table: String::new(),
-            n_max: 0,
-            q_retention: String::new(),
-            d_trailing: String::new(),
-            mu_max: String::new(),
-            recovery_target: String::new(),
+# 2b) In the ProtectionConfig build, override from profile if present
+old_cfg = '''        let prot_cfg = crate::equity::protection::ProtectionConfig::default_v1();
+        let prot = crate::equity::protection::compute(
+            snapshot.initial_balance,
+            nav_hwm,
+            &prot_cfg,
+        );'''
+new_cfg = '''        let mut prot_cfg = crate::equity::protection::ProtectionConfig::default_v1();
+        if let Some(p) = profile {
+            if let Ok(v) = Decimal::from_str(&p.profit_protect_activation) { prot_cfg.profit_protect_activation = v; }
+            if let Ok(v) = Decimal::from_str(&p.profit_protect_full)       { prot_cfg.profit_protect_full = v; }
+            if let Ok(v) = Decimal::from_str(&p.max_profit_retention)      { prot_cfg.max_profit_retention = v; }
+            if let Ok(v) = Decimal::from_str(&p.trailing_dd_pct)           { prot_cfg.trailing_dd_pct = v; }
         }
-    }
+        let prot = crate::equity::protection::compute(
+            snapshot.initial_balance,
+            nav_hwm,
+            &prot_cfg,
+        );'''
+if old_cfg not in s:
+    raise SystemExit("protection config block not found")
+s = s.replace(old_cfg, new_cfg)
 
-    /// Alias so old callers `EquityConfig::default_v1()` keep working.
-    pub fn default_v1() -> Self { Self::default_v2() }
+p.write_text(s)
+print("  ✓ state.rs: from_snapshot_with_profile added")
+PY
 
-    pub fn validate(&self) -> Result<(), String> {
-        let d = |s: &str, name: &str| -> Result<Decimal, String> {
-            if s.is_empty() { return Ok(Decimal::ZERO); }
-            Decimal::from_str(s).map_err(|e| format!("{name}: {e}"))
-        };
-        let _ = d(&self.r0, "r0")?;
-        let _ = d(&self.profit_protect_activation, "profit_protect_activation")?;
-        let _ = d(&self.profit_protect_full, "profit_protect_full")?;
-        let _ = d(&self.max_profit_retention, "max_profit_retention")?;
-        let _ = d(&self.trailing_dd_pct, "trailing_dd_pct")?;
-        let _ = d(&self.d_prop, "d_prop")?;
-        let _ = d(&self.alpha, "alpha")?;
-        let _ = d(&self.daily_loss_limit, "daily_loss_limit")?;
-        let _ = d(&self.r_portfolio_max, "r_portfolio_max")?;
-        let _ = d(&self.r_prop_max, "r_prop_max")?;
-        let _ = d(&self.execution_buffer_pct, "execution_buffer_pct")?;
-        let _ = d(&self.recovery_probe_pct, "recovery_probe_pct")?;
-        if self.max_snapshot_age_hours < 1 {
-            return Err("max_snapshot_age_hours must be >= 1".into());
+# ---------- 3) patch commands/equity.rs — pass profile ----------
+echo "==> [3/5] Patching commands/equity.rs"
+
+python3 - <<'PY'
+import pathlib, sys, re
+p = pathlib.Path("src-tauri/src/commands/equity.rs")
+s = p.read_text()
+
+# 3a) equity_auto_snapshot_create — load profile + call with_profile
+# Find the AccountState::from_snapshot call in auto_snapshot
+old = '''    let acct_state = crate::equity::state::AccountState::from_snapshot(parsed_for_state, &cfg)
+        .map_err(|e| format!("AccountState: {}", e))?;'''
+new = '''    let profile_opt = {
+        let conn2 = state.db.lock().map_err(|e| e.to_string())?;
+        crate::db::profiles::get(&conn2, acc_id).map_err(|e| e.to_string())?
+    };
+    let acct_state = crate::equity::state::AccountState::from_snapshot_with_profile(
+        parsed_for_state, &cfg, profile_opt.as_ref()
+    ).map_err(|e| format!("AccountState: {}", e))?;'''
+if old in s:
+    s = s.replace(old, new, 1)
+    print("  ✓ auto_snapshot_create: profile-aware")
+
+# 3b) equity_evaluate — load profile for the account_id arg
+old_eval = '''    let parsed = snap_domain.parse().map_err(|e| format!("snapshot: {e}"))?;
+    let state_acct = AccountState::from_snapshot(parsed, &cfg)
+        .map_err(|e| format!("state: {e}"))?;
+
+    // 2. Build proposal (clone original for later risk_detail)'''
+new_eval = '''    let parsed = snap_domain.parse().map_err(|e| format!("snapshot: {e}"))?;
+    let profile_opt = {
+        let aid = account_id.unwrap_or_else(|| {
+            // fallback: use active account
+            0
+        });
+        if aid > 0 {
+            crate::db::profiles::get(&conn, aid).map_err(|e| e.to_string())?
+        } else {
+            None
         }
-        Ok(())
-    }
+    };
+    let state_acct = AccountState::from_snapshot_with_profile(parsed, &cfg, profile_opt.as_ref())
+        .map_err(|e| format!("state: {e}"))?;
 
-    /// Legacy accessor for old callers. Returns default loss table.
-    pub fn loss_table(&self) -> Result<Vec<Decimal>, String> {
-        Ok(vec![Decimal::ONE])
-    }
-}
+    // 2. Build proposal (clone original for later risk_detail)'''
+if old_eval in s:
+    s = s.replace(old_eval, new_eval, 1)
+    print("  ✓ equity_evaluate: profile-aware")
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+# 3c) equity_preview_risk — already has account_id, load profile
+old_prev = '''    let parsed = snap_domain.parse().map_err(|e| format!("snapshot: {e}"))?;
+    let acct_state = AccountState::from_snapshot(parsed, &cfg)
+        .map_err(|e| format!("state: {e}"))?;
 
-    #[test]
-    fn default_v2_parses() {
-        let c = EquityConfig::default_v2();
-        c.validate().unwrap();
-    }
+    let r0 = Decimal::from_str(&cfg.r0).unwrap_or(Decimal::new(1, 2));'''
+new_prev = '''    let parsed = snap_domain.parse().map_err(|e| format!("snapshot: {e}"))?;
+    let profile_opt = match account_id {
+        Some(aid) => {
+            let conn2 = state.db.lock().map_err(|e| e.to_string())?;
+            let p = crate::db::profiles::get(&conn2, aid).map_err(|e| e.to_string())?;
+            drop(conn2);
+            p
+        }
+        None => None,
+    };
+    let acct_state = AccountState::from_snapshot_with_profile(parsed, &cfg, profile_opt.as_ref())
+        .map_err(|e| format!("state: {e}"))?;
 
-    #[test]
-    fn backward_compat_old_json() {
-        // Legacy JSON with all old fields.
-        let json = r#"{
-            "r0": "0.01",
-            "r_min": "0.0025",
-            "delta_r": "0.001",
-            "dd_1": "0.05",
-            "dd_2": "0.10",
-            "dd_3": "0.15",
-            "m_dd_1": "1.0",
-            "m_dd_2": "0.75",
-            "m_dd_3": "0.50",
-            "m_dd_4": "0.25",
-            "m_loss_table": "1.0,0.8,0.6,0.4,0.2,0.0",
-            "n_max": 5,
-            "q_retention": "0.3",
-            "d_trailing": "0.1",
-            "d_prop": "0",
-            "alpha": "0.5",
-            "daily_loss_limit": "0",
-            "r_portfolio_max": "0",
-            "r_prop_max": "0",
-            "mu_max": "0.8",
-            "max_snapshot_age_hours": 24,
-            "recovery_target": "0.8"
-        }"#;
-        let c: EquityConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(c.r0, "0.01");
-        // New fields get defaults.
-        assert_eq!(c.profit_protect_activation, "0.05");
-        assert_eq!(c.max_profit_retention, "0.40");
-        assert_eq!(c.recovery_probe_pct, "0.25");
-        c.validate().unwrap();
-    }
+    let r0 = Decimal::from_str(&cfg.r0).unwrap_or(Decimal::new(1, 2));'''
+if old_prev in s:
+    s = s.replace(old_prev, new_prev, 1)
+    print("  ✓ equity_preview_risk: profile-aware")
 
-    #[test]
-    fn round_trip_v2() {
-        let c = EquityConfig::default_v2();
-        let json = serde_json::to_string(&c).unwrap();
-        let c2: EquityConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(c2.r0, c.r0);
-        assert_eq!(c2.profit_protect_activation, c.profit_protect_activation);
-    }
-}
-RUST_EOF
+# 3d) equity_snapshot_create (manual) — also profile-aware for consistency
+old_manual = '''    let acct_state = AccountState::from_snapshot(parsed, &cfg)
+        .map_err(|e| format!("AccountState: {e}"))?;'''
+new_manual = '''    let acct_state = AccountState::from_snapshot_with_profile(parsed, &cfg, None)
+        .map_err(|e| format!("AccountState: {e}"))?;'''
+if old_manual in s:
+    s = s.replace(old_manual, new_manual, 1)
+    print("  ✓ equity_snapshot_create: uses with_profile(None)")
 
-echo "config.rs rewritten"
+p.write_text(s)
+PY
+
+# ---------- 4) test + build ----------
+echo "==> [4/5] cargo check"
+( cd src-tauri && cargo check 2>&1 | tee /tmp/s16_check.log )
+RC=${PIPESTATUS[0]:-$?}
+echo "exit: $RC"
+[ "$RC" -eq 0 ] || { echo "FATAL: see /tmp/s16_check.log"; exit 4; }
+
+echo "==> [5/5] cargo test"
+( cd src-tauri && cargo test 2>&1 | grep -E "test result|FAILED" | head -10 )
 
 echo ""
-echo "==> cargo build"
-( cd src-tauri && cargo build 2>&1 | grep -E "^error" | head -20 || true )
-
-echo ""
-echo "==> cargo test config"
-( cd src-tauri && cargo test config 2>&1 | grep -E "test result|FAILED" | head -6 )
-
-echo ""
-echo "==> S12-A DONE"
+echo "============================================================"
+echo "S16 COMPLETE"
+echo "  ✓ from_snapshot_with_profile(snapshot, config, profile)"
+echo "  ✓ auto_snapshot/evaluate/preview: profile-aware"
+echo "  Backup: $BK"
+echo "============================================================"
