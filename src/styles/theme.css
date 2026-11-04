@@ -833,3 +833,44 @@ input[type="datetime-local"]::-webkit-datetime-edit-text {
   border-color: var(--border, #d1d5db) !important;
 }
 
+
+/* ============================================================
+ * BUTTON RESET — kill all black/gray backgrounds
+ * Component .ee-btn-* handles colors; this prevents interference
+ * ============================================================ */
+
+button {
+  cursor: pointer;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border, #232c38);
+  font-family: inherit;
+}
+
+button:hover {
+  border-color: var(--accent, #2dd4bf);
+}
+
+button:active {
+  border-color: var(--accent, #2dd4bf);
+  background: transparent;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent, #2dd4bf);
+  outline-offset: 2px;
+}
+
+/* NO dark/light media-query overrides — theme.ts handles it */
+
+/* Prevent black background in native OS dark mode */
+@media (prefers-color-scheme: dark) {
+  input:not(.ee-btn):not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    color: var(--text-0, #e6edf3);
+    background-color: var(--bg-2, #161d26);
+  }
+  /* buttons: NO OVERRIDE — let .ee-btn handle */
+}
+

@@ -36,6 +36,8 @@ pub fn run() {
             commands::risk::risk_r_multiple,
             commands::risk::risk_echo_decimal,
             commands::trades::trades_create,
+            commands::trades::trades_update_current_price,
+            commands::trades::trades_update_current_stop,
             commands::equity::equity_config_get,
             commands::equity::equity_config_set,
             commands::equity::equity_snapshot_create,

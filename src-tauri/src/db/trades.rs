@@ -18,7 +18,7 @@ pub fn create_trade(conn: &Connection, t: &NewTrade) -> Result<i64, DbError> {
          (account_id, symbol, side, entry_price, initial_stop, take_profit, total_quantity,
           original_quantity, size_type, size_value, size_unit, outcome,
           status, strategy_id, opened_at, closed_at, notes, chart_url, screenshot_path,
-          manual_pnl, created_at, updated_at)
+          manual_pnl, current_price, current_price_updated_at, current_price_source, current_stop, created_at, updated_at)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?7,?8,?9,?10,'open','open',?11,?12,NULL,?13,?14,?15,NULL,?16,?16)",
         params![
             t.account_id, t.symbol, t.side.as_str(),
@@ -61,44 +61,52 @@ pub fn get_trade(conn: &Connection, id: i64) -> Result<Option<Trade>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, account_id, symbol, side, entry_price, initial_stop, take_profit,
                 total_quantity, original_quantity, outcome, size_type, size_value, size_unit,
-                manual_pnl, status, strategy_id, opened_at, closed_at, notes,
+                manual_pnl, current_price, current_price_updated_at, current_price_source, current_stop,
+                status, strategy_id, opened_at, closed_at, notes,
                 chart_url, screenshot_path, created_at, updated_at
          FROM trades WHERE id = ?1",
     )?;
 
     let row = stmt.query_row([id], |r| {
         Ok((
-            r.get::<_, i64>(0)?,                   // id
-            r.get::<_, i64>(1)?,                   // account_id
-            r.get::<_, String>(2)?,                // symbol
-            r.get::<_, String>(3)?,                // side
-            r.get::<_, String>(4)?,                // entry_price
-            r.get::<_, String>(5)?,                // initial_stop
-            r.get::<_, Option<String>>(6)?,        // take_profit
-            r.get::<_, String>(7)?,                // total_quantity
-            r.get::<_, Option<String>>(8)?,        // original_quantity
-            r.get::<_, String>(9)?,                // outcome
-            r.get::<_, String>(10)?,               // size_type
-            r.get::<_, Option<String>>(11)?,       // size_value
-            r.get::<_, Option<String>>(12)?,       // size_unit
-            r.get::<_, Option<String>>(13)?,       // manual_pnl
-            r.get::<_, String>(14)?,               // status
-            r.get::<_, Option<i64>>(15)?,          // strategy_id
-            r.get::<_, String>(16)?,               // opened_at
-            r.get::<_, Option<String>>(17)?,       // closed_at
-            r.get::<_, Option<String>>(18)?,       // notes
-            r.get::<_, Option<String>>(19)?,       // chart_url
-            r.get::<_, Option<String>>(20)?,       // screenshot_path
-            r.get::<_, String>(21)?,               // created_at
-            r.get::<_, String>(22)?,               // updated_at
+            r.get::<_, i64>(0)?,                         // id
+            r.get::<_, i64>(1)?,                         // account_id
+            r.get::<_, String>(2)?,                      // symbol
+            r.get::<_, String>(3)?,                      // side
+            r.get::<_, String>(4)?,                      // entry_price
+            r.get::<_, String>(5)?,                      // initial_stop
+            r.get::<_, Option<String>>(6)?,              // take_profit
+            r.get::<_, String>(7)?,                      // total_quantity
+            r.get::<_, Option<String>>(8)?,              // original_quantity
+            r.get::<_, String>(9)?,                      // outcome
+            r.get::<_, String>(10)?,                     // size_type
+            r.get::<_, Option<String>>(11)?,             // size_value
+            r.get::<_, Option<String>>(12)?,             // size_unit
+            r.get::<_, Option<String>>(13)?,             // manual_pnl
+            r.get::<_, Option<String>>(14)?,             // current_price
+            r.get::<_, Option<String>>(15)?,             // current_price_updated_at
+            r.get::<_, Option<String>>(16)?,             // current_price_source
+            r.get::<_, Option<String>>(17)?,             // current_stop
+            r.get::<_, String>(18)?,                     // status
+            r.get::<_, Option<i64>>(19)?,                // strategy_id
+            r.get::<_, String>(20)?,                     // opened_at
+            r.get::<_, Option<String>>(21)?,             // closed_at
+            r.get::<_, Option<String>>(22)?,             // notes
+            r.get::<_, Option<String>>(23)?,             // chart_url
+            r.get::<_, Option<String>>(24)?,             // screenshot_path
+            r.get::<_, String>(25)?,                     // created_at
+            r.get::<_, String>(26)?,                     // updated_at
         ))
     }).optional()?;
 
     let Some((
-        tid, acc, sym, side_s, entry_s, stop_s, tp_s,
-        qty_s, orig_qty_s, outcome_s,
-        size_type_s, size_value_s, size_unit,
-        manual_pnl_s, status_s, sid,
+        tid, acc, sym, side_s,
+        entry_s, stop_s, tp_s,
+        qty_s, orig_qty_s, outcome_s, size_type_s,
+        size_value_s, size_unit,
+        manual_pnl_s,
+        current_price_s, current_price_updated_at, current_price_source, current_stop_s,
+        status_s, sid,
         opened, closed, notes, chart_url, screenshot_path, created, updated,
     )) = row else {
         return Ok(None);
@@ -124,6 +132,10 @@ pub fn get_trade(conn: &Connection, id: i64) -> Result<Option<Trade>, DbError> {
         size_value: size_value_s.as_deref().map(dec).transpose()?,
         size_unit,
         manual_pnl: manual_pnl_s.as_deref().map(dec).transpose()?,
+        current_price: current_price_s.as_deref().map(dec).transpose()?,
+        current_price_updated_at,
+        current_price_source,
+        current_stop: current_stop_s.as_deref().map(dec).transpose()?,
         status: TradeStatus::from_str(&status_s).unwrap_or(TradeStatus::Open),
         strategy_id: sid,
         opened_at: opened,
@@ -405,7 +417,7 @@ mod tests {
         let t = get_trade(&conn, id).unwrap().unwrap();
         assert_eq!(t.status, TradeStatus::Closed);
         assert_eq!(t.outcome, TradeOutcome::TpHit);
-        assert_eq!(t.manual_pnl, Some(dec!(420)));
+        assert_eq!(t.manual_pnl, current_price, current_price_updated_at, current_price_source, current_stop, Some(dec!(420)));
     }
 
     #[test]
@@ -415,7 +427,7 @@ mod tests {
         add_exit_leg(&conn, id, dec!(1.0950), dec!(1), Decimal::ZERO, "t".into(),
             Some(TradeOutcome::SlHit), Some(dec!(-200))).unwrap();
         let t = get_trade(&conn, id).unwrap().unwrap();
-        assert_eq!(t.manual_pnl, Some(dec!(-200)));
+        assert_eq!(t.manual_pnl, current_price, current_price_updated_at, current_price_source, current_stop, Some(dec!(-200)));
     }
 }
 

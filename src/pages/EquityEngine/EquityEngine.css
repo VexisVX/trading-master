@@ -1955,3 +1955,135 @@ html .ee-modal .ee-profile-derived__table td:last-child {
 [data-theme="cream"] .ee-inst-source--verified { background: #d1e7d0; color: #14532d; }
 [data-theme="cream"] .ee-inst-source--user_entered { background: #d4ecec; color: #0e7490; }
 [data-theme="cream"] .ee-inst-source--estimated { background: #f5e0b0; color: #78350f; }
+
+/* ============================================================
+ * FINAL BUTTON NUCLEAR OVERRIDE
+ * .ee-btn-* must always win — with html prefix + !important
+ * ============================================================ */
+
+html body button.ee-btn {
+  border: 1px solid var(--border, #232c38);
+  background: transparent;
+  color: var(--text-0, #e6edf3);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+/* Primary */
+html body button.ee-btn.ee-btn--primary,
+html body .ee-btn.ee-btn--primary {
+  background: var(--accent, #2dd4bf) !important;
+  color: var(--bg-0, #0b0f14) !important;
+  border-color: var(--accent, #2dd4bf) !important;
+}
+html body button.ee-btn.ee-btn--primary:hover,
+html body .ee-btn.ee-btn--primary:hover {
+  background: var(--accent-dim, #14b8a6) !important;
+  color: var(--bg-0, #0b0f14) !important;
+  border-color: var(--accent-dim, #14b8a6) !important;
+}
+html body button.ee-btn.ee-btn--primary:active,
+html body .ee-btn.ee-btn--primary:active {
+  background: var(--accent-dim, #14b8a6) !important;
+  color: var(--bg-0, #0b0f14) !important;
+}
+
+/* Ghost */
+html body button.ee-btn.ee-btn--ghost,
+html body .ee-btn.ee-btn--ghost {
+  background: transparent !important;
+  color: var(--text-0, #e6edf3) !important;
+  border-color: var(--border, #232c38) !important;
+}
+html body button.ee-btn.ee-btn--ghost:hover,
+html body .ee-btn.ee-btn--ghost:hover {
+  background: var(--bg-2, #161d26) !important;
+  color: var(--accent, #2dd4bf) !important;
+  border-color: var(--accent, #2dd4bf) !important;
+}
+html body button.ee-btn.ee-btn--ghost:active,
+html body .ee-btn.ee-btn--ghost:active {
+  background: var(--bg-3, #1d2530) !important;
+  color: var(--accent, #2dd4bf) !important;
+}
+
+/* Danger */
+html body button.ee-btn.ee-btn--danger,
+html body .ee-btn.ee-btn--danger {
+  background: transparent !important;
+  color: var(--danger, #f87171) !important;
+  border-color: var(--danger, #f87171) !important;
+}
+html body button.ee-btn.ee-btn--danger:hover,
+html body .ee-btn.ee-btn--danger:hover {
+  background: rgba(248, 113, 113, 0.12) !important;
+}
+
+/* Light theme overrides */
+html body[data-theme="light"] button.ee-btn.ee-btn--primary,
+html body [data-theme="light"] .ee-btn.ee-btn--primary,
+[data-theme="light"] .ee-btn.ee-btn--primary {
+  background: #0891b2 !important;
+  color: #ffffff !important;
+  border-color: #0891b2 !important;
+}
+html body[data-theme="light"] button.ee-btn.ee-btn--primary:hover,
+html body [data-theme="light"] .ee-btn.ee-btn--primary:hover,
+[data-theme="light"] .ee-btn.ee-btn--primary:hover {
+  background: #0e7490 !important;
+  color: #ffffff !important;
+}
+
+html body[data-theme="light"] button.ee-btn.ee-btn--ghost,
+html body [data-theme="light"] .ee-btn.ee-btn--ghost,
+[data-theme="light"] .ee-btn.ee-btn--ghost {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+html body[data-theme="light"] button.ee-btn.ee-btn--ghost:hover,
+html body [data-theme="light"] .ee-btn.ee-btn--ghost:hover,
+[data-theme="light"] .ee-btn.ee-btn--ghost:hover {
+  background: #f1f5f9 !important;
+  color: #0891b2 !important;
+}
+
+/* Cream theme overrides */
+html body[data-theme="cream"] button.ee-btn.ee-btn--primary,
+html body [data-theme="cream"] .ee-btn.ee-btn--primary,
+[data-theme="cream"] .ee-btn.ee-btn--primary {
+  background: #0e7490 !important;
+  color: #faf6ed !important;
+  border-color: #0e7490 !important;
+}
+html body[data-theme="cream"] button.ee-btn.ee-btn--primary:hover,
+html body [data-theme="cream"] .ee-btn.ee-btn--primary:hover,
+[data-theme="cream"] .ee-btn.ee-btn--primary:hover {
+  background: #0c5f75 !important;
+  color: #faf6ed !important;
+}
+
+html body[data-theme="cream"] button.ee-btn.ee-btn--ghost,
+html body [data-theme="cream"] .ee-btn.ee-btn--ghost,
+[data-theme="cream"] .ee-btn.ee-btn--ghost {
+  background: #faf6ed !important;
+  color: #2e2418 !important;
+  border-color: #c8bca1 !important;
+}
+html body[data-theme="cream"] button.ee-btn.ee-btn--ghost:hover,
+html body [data-theme="cream"] .ee-btn.ee-btn--ghost:hover,
+[data-theme="cream"] .ee-btn.ee-btn--ghost:hover {
+  background: #efe7d8 !important;
+  color: #0e7490 !important;
+}
+
+/* Disabled — no hover */
+html body button.ee-btn:disabled,
+html body button.ee-btn[disabled],
+html body button.ee-btn:disabled:hover,
+html body button.ee-btn[disabled]:hover {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  filter: none !important;
+}
+

@@ -327,3 +327,154 @@ pub fn trades_quick_create(
     Ok(_id)
 }
 
+
+// ============================================================
+// PHASE 2.2-A — current price + current stop commands
+// ============================================================
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct UpdatePriceInput {
+    pub trade_id: i64,
+    pub price: String,
+    pub source: String, // "manual" only in this phase
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct UpdatePriceOut {
+    pub trade_id: i64,
+    pub price: String,
+    pub updated_at: String,
+    pub source: String,
+}
+
+#[tauri::command]
+pub fn trades_update_current_price(
+    state: tauri::State<'_, crate::commands::AppState>,
+    input: UpdatePriceInput,
+) -> Result<UpdatePriceOut, String> {
+    use rust_decimal::prelude::FromStr;
+
+    // 1. Validate price
+    let price = Decimal::from_str(&input.price)
+        .map_err(|e| format!("price: {e}"))?;
+    if price <= Decimal::ZERO {
+        return Err("price must be > 0".into());
+    }
+
+    // 2. Validate source
+    let source = input.source.as_str();
+    if source == "estimated" {
+        return Err("estimated price source is prohibited".into());
+    }
+    if source != "manual" && source != "broker" {
+        return Err(format!("invalid source: {source}"));
+    }
+
+    // 3. Check trade exists and is open
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let (status, account_id): (String, i64) = conn
+        .query_row(
+            "SELECT status, account_id FROM trades WHERE id = ?1",
+            [input.trade_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|e| format!("trade {} not found: {e}", input.trade_id))?;
+
+    if status != "open" {
+        return Err(format!("trade {} is {}, not open", input.trade_id, status));
+    }
+    let _ = account_id; // reserved for future account-scoped checks
+
+    // 4. Update
+    let now = chrono::Utc::now().to_rfc3339();
+    let updated = conn.execute(
+        "UPDATE trades
+            SET current_price = ?1,
+                current_price_updated_at = ?2,
+                current_price_source = ?3,
+                updated_at = ?2
+          WHERE id = ?4 AND status = 'open'",
+        rusqlite::params![price.to_string(), now, source, input.trade_id],
+    ).map_err(|e| e.to_string())?;
+
+    if updated == 0 {
+        return Err("update affected 0 rows (trade may have closed)".into());
+    }
+
+    Ok(UpdatePriceOut {
+        trade_id: input.trade_id,
+        price: price.to_string(),
+        updated_at: now,
+        source: source.to_string(),
+    })
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct UpdateStopInput {
+    pub trade_id: i64,
+    pub new_stop: String,
+    pub reason: Option<String>,
+}
+
+#[tauri::command]
+pub fn trades_update_current_stop(
+    state: tauri::State<'_, crate::commands::AppState>,
+    input: UpdateStopInput,
+) -> Result<(), String> {
+    use rust_decimal::prelude::FromStr;
+
+    let new_stop = Decimal::from_str(&input.new_stop)
+        .map_err(|e| format!("new_stop: {e}"))?;
+    if new_stop <= Decimal::ZERO {
+        return Err("new_stop must be > 0".into());
+    }
+
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    // Load trade
+    let (status, side, entry_price, old_stop): (String, String, String, String) = conn
+        .query_row(
+            "SELECT status, side, entry_price, initial_stop FROM trades WHERE id = ?1",
+            [input.trade_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .map_err(|e| format!("trade {} not found: {e}", input.trade_id))?;
+
+    if status != "open" {
+        return Err(format!("trade {} is not open", input.trade_id));
+    }
+
+    // Validate stop direction
+    let entry_d = Decimal::from_str(&entry_price).map_err(|e| e.to_string())?;
+    if side == "long" && new_stop > entry_d {
+        return Err(format!("long stop {new_stop} > entry {entry_d}"));
+    }
+    if side == "short" && new_stop < entry_d {
+        return Err(format!("short stop {new_stop} < entry {entry_d}"));
+    }
+
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // 1. Update current_stop
+    tx.execute(
+        "UPDATE trades SET current_stop = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![new_stop.to_string(), now, input.trade_id],
+    ).map_err(|e| e.to_string())?;
+
+    // 2. Audit into trade_sl_history
+    tx.execute(
+        "INSERT INTO trade_sl_history (trade_id, old_stop, new_stop, reason, changed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            input.trade_id,
+            old_stop,
+            new_stop.to_string(),
+            input.reason.as_deref().unwrap_or("manual_update"),
+            now,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}

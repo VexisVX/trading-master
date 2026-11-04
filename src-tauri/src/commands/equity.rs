@@ -31,12 +31,14 @@ pub struct SnapshotCreateInput {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProposalInput {
+    pub symbol: Option<String>,
     pub entry: String,
     pub stop: String,
     pub take_profit: Option<String>,
-    pub contract_multiplier: String,
-    pub commission_per_unit: String,
-    pub slippage_buffer: String,
+    pub allow_legacy: Option<bool>,
+    pub contract_multiplier: Option<String>,
+    pub commission_per_unit: Option<String>,
+    pub slippage_buffer: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -295,14 +297,14 @@ pub fn equity_evaluate(
     // 2. Build proposal (S2.1: symbol optional, legacy fallback)
     let prop = match proposal {
         Some(p) => Some(TradeProposal {
-            symbol: None,
+            symbol: p.symbol,
             entry: p.entry,
             stop: p.stop,
             take_profit: p.take_profit,
-            allow_legacy: true,  // backward compat: legacy path if no symbol
-            contract_multiplier: Some(p.contract_multiplier),
-            commission_per_unit: Some(p.commission_per_unit),
-            slippage_buffer: Some(p.slippage_buffer),
+            allow_legacy: p.allow_legacy.unwrap_or(true),
+            contract_multiplier: p.contract_multiplier,
+            commission_per_unit: p.commission_per_unit,
+            slippage_buffer: p.slippage_buffer,
             instrument_override: None,
         }),
         None => None,
@@ -372,9 +374,9 @@ pub fn equity_evaluate(
                 Some(p) => {
                     let entry = parse_dec(&p.entry, "entry").unwrap_or(Decimal::ZERO);
                     let stop = parse_dec(&p.stop, "stop").unwrap_or(Decimal::ZERO);
-                    let mult = parse_dec(&p.contract_multiplier, "mult").unwrap_or(Decimal::ONE);
-                    let comm = parse_dec(&p.commission_per_unit, "comm").unwrap_or(Decimal::ZERO);
-                    let slip = parse_dec(&p.slippage_buffer, "slip").unwrap_or(Decimal::ZERO);
+                    let mult = parse_dec(p.contract_multiplier.as_deref().unwrap_or("1"), "mult").unwrap_or(Decimal::ONE);
+                    let comm = parse_dec(p.commission_per_unit.as_deref().unwrap_or("0"), "comm").unwrap_or(Decimal::ZERO);
+                    let slip = parse_dec(p.slippage_buffer.as_deref().unwrap_or("0"), "slip").unwrap_or(Decimal::ZERO);
                     let ems = (entry - stop).abs();
                     let per_unit = ems * mult + comm + slip;
                     (ems, mult, per_unit)
@@ -733,12 +735,14 @@ pub fn equity_pre_evaluate(
     // 2) run the normal evaluator with the same proposal, WITHOUT a size
     //    (we only want to know allowed risk; size is computed by us)
     let proposal = ProposalInput {
+        symbol: None,
         entry,
         stop,
         take_profit,
-        contract_multiplier,
-        commission_per_unit: "0".into(),
-        slippage_buffer: "0".into(),
+        allow_legacy: Some(true),
+        contract_multiplier: Some("100000".into()),
+        commission_per_unit: Some("0".into()),
+        slippage_buffer: Some("0".into()),
     };
 
     let decision = match equity_evaluate(state, account_id, Some(proposal)) {

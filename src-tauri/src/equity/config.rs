@@ -62,6 +62,19 @@ pub struct EquityConfig {
     #[serde(default = "def_max_age")]
     pub max_snapshot_age_hours: i64,
 
+    // ---- PHASE 2.2: market data freshness ----
+    /// Max age (minutes) for current_price before considered stale.
+    #[serde(default = "def_max_price_age")]
+    pub max_price_age_minutes: i64,
+
+    // ---- PHASE 2.2: daily reset ----
+    /// IANA timezone for daily reset (e.g. "UTC", "Europe/London").
+    #[serde(default = "def_reset_tz")]
+    pub daily_reset_tz: String,
+    /// Daily reset time in HH:MM (local to daily_reset_tz).
+    #[serde(default = "def_reset_time")]
+    pub daily_reset_time: String,
+
     // ---- Legacy fields (accepted but ignored) ----
     #[serde(default, skip_serializing)]
     pub r_min: String,
@@ -103,6 +116,9 @@ fn def_alpha() -> String { "0.5".into() }
 fn def_exec_buffer() -> String { "0.001".into() }
 fn def_recovery_probe() -> String { "0.25".into() }
 fn def_max_age() -> i64 { 24 }
+fn def_max_price_age() -> i64 { 60 }
+fn def_reset_tz() -> String { "UTC".into() }
+fn def_reset_time() -> String { "00:00".into() }
 
 impl EquityConfig {
     pub fn default_v2() -> Self {
@@ -120,6 +136,9 @@ impl EquityConfig {
             execution_buffer_pct: "0.001".into(),
             recovery_probe_pct: "0.25".into(),
             max_snapshot_age_hours: 24,
+            max_price_age_minutes: 60,
+            daily_reset_tz: "UTC".into(),
+            daily_reset_time: "00:00".into(),
             // legacy
             r_min: String::new(),
             delta_r: String::new(),
@@ -161,6 +180,22 @@ impl EquityConfig {
         let _ = d(&self.recovery_probe_pct, "recovery_probe_pct")?;
         if self.max_snapshot_age_hours < 1 {
             return Err("max_snapshot_age_hours must be >= 1".into());
+        }
+        if self.max_price_age_minutes < 1 {
+            return Err("max_price_age_minutes must be >= 1".into());
+        }
+        if self.daily_reset_tz.trim().is_empty() {
+            return Err("daily_reset_tz must not be empty".into());
+        }
+        // Validate HH:MM format
+        let parts: Vec<&str> = self.daily_reset_time.split(':').collect();
+        if parts.len() != 2 {
+            return Err("daily_reset_time must be HH:MM".into());
+        }
+        let hh: u32 = parts[0].parse().map_err(|_| "daily_reset_time hour invalid".to_string())?;
+        let mm: u32 = parts[1].parse().map_err(|_| "daily_reset_time minute invalid".to_string())?;
+        if hh > 23 || mm > 59 {
+            return Err("daily_reset_time out of range".into());
         }
         Ok(())
     }

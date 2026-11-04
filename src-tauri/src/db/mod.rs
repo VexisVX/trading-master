@@ -73,7 +73,7 @@ fn set_version(conn: &Connection, v: i64) -> Result<(), DbError> {
     Ok(())
 }
 
-const CURRENT_VERSION: i64 = 26;
+const CURRENT_VERSION: i64 = 27;
 
 fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     let mut v = current_version(conn)?;
@@ -110,6 +110,7 @@ fn run_migrations(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
     if v < 24 { conn.execute_batch(MIGRATION_024)?; set_version(conn, 24)?; v = 24; }
     if v < 25 { conn.execute_batch(MIGRATION_025)?; set_version(conn, 25)?; v = 25; }
     if v < 26 { conn.execute_batch(MIGRATION_026)?; set_version(conn, 26)?; v = 26; }
+    if v < 27 { conn.execute_batch(MIGRATION_027)?; set_version(conn, 27)?; v = 27; }
     let _ = v;
 
     Ok(())
@@ -537,6 +538,22 @@ UPDATE instruments SET tick_size = '0.01', tick_value = '0.01', contract_size = 
 UPDATE instruments SET tick_size = '0.1', tick_value = '0.1', contract_size = '1', lot_step = '0.1'
   WHERE symbol IN ('NAS100', 'SPX500', 'US30');
 "#;
+
+const MIGRATION_027: &str = r#"
+-- PHASE 2.2-A: current market price + current stop for open trades.
+-- initial_stop remains the historical entry stop.
+-- current_price_source: manual | broker (estimated forbidden)
+ALTER TABLE trades ADD COLUMN current_price TEXT;
+ALTER TABLE trades ADD COLUMN current_price_updated_at TEXT;
+ALTER TABLE trades ADD COLUMN current_price_source TEXT;
+ALTER TABLE trades ADD COLUMN current_stop TEXT;
+
+-- Index for daily loss queries (open trades with recent price)
+CREATE INDEX IF NOT EXISTS idx_trades_open_priced
+  ON trades(status, current_price_updated_at)
+  WHERE status = 'open';
+"#;
+
 
 
 
