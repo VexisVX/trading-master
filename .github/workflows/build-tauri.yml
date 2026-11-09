@@ -2,7 +2,7 @@ name: Build Tauri EXE
 
 on:
   push:
-    branches: [ main, master, master ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -12,13 +12,12 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: lts/*
-          cache: 'npm'
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -41,7 +40,7 @@ jobs:
           args: ''
 
       - name: Upload EXE as Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: windows-exe
           path: |
