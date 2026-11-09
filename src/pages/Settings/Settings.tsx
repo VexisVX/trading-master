@@ -552,24 +552,73 @@ export function Settings() {
 
       {tab === "about" && (
         <div className="card">
-          <h2 className="section-title">About</h2>
-          <div className="about-block">
-            <div><strong>Trading Manager</strong></div>
-            <div className="dim">Version 0.1.0 · local-first · offline</div>
-            <p className="settings__hint" style={{ marginTop: 12 }}>
-              A professional trading journal, risk calculator and analytics tool. All data is stored locally.
-            </p>
-            <p className="settings__hint" style={{ marginTop: 4 }}>
-              Built by <strong>Younes Ahmadi</strong>
-            </p>
-            <div className="about-links">
-              <a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://github.com/VexisVX"); }}>
-                GitHub · VexisVX
-              </a>
+          <div className="about-hero">
+            <div className="about-hero__logo">T</div>
+            <div className="about-hero__info">
+              <h1 className="about-hero__name">Trading Manager</h1>
+              <p className="about-hero__tagline">
+                A local-first trading journal, risk calculator &amp; analytics tool.
+                All data stays on your machine.
+              </p>
+            </div>
+            <span className="about-hero__version">v0.1.0</span>
+          </div>
+
+          <div className="about-social">
+            <button
+              className="about-social__btn about-social__btn--gh"
+              onClick={() => openUrl("https://github.com/VexisVX")}
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.35-1.3-1.71-1.3-1.71-1.06-.72.08-.71.08-.71 1.17.08 1.79 1.2 1.79 1.2 1.04 1.78 2.73 1.26 3.4.97.1-.75.4-1.26.74-1.55-2.56-.29-5.25-1.28-5.25-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.05 11.05 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.27 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z" />
+              </svg>
+              GitHub
+            </button>
+          </div>
+
+          <div className="about-grid">
+            <div className="about-cell">
+              <div className="about-cell__label">Author</div>
+              <div className="about-cell__value">Younes Ahmadi</div>
+            </div>
+            <div className="about-cell">
+              <div className="about-cell__label">Version</div>
+              <div className="about-cell__value mono">0.1.0</div>
+            </div>
+            <div className="about-cell">
+              <div className="about-cell__label">License</div>
+              <div className="about-cell__value mono">MIT</div>
+            </div>
+            <div className="about-cell">
+              <div className="about-cell__label">Platform</div>
+              <div className="about-cell__value">Windows · macOS · Linux</div>
+            </div>
+          </div>
+
+          <div>
+            <div className="about-cell__label" style={{ marginBottom: 8 }}>Built with</div>
+            <div className="about-stack">
+              <span className="about-chip">Tauri 2</span>
+              <span className="about-chip">Rust</span>
+              <span className="about-chip">React</span>
+              <span className="about-chip">TypeScript</span>
+              <span className="about-chip">SQLite</span>
+              <span className="about-chip">rusqlite</span>
+            </div>
+          </div>
+
+          <div className="about-credits">
+            <div className="about-credits__title">Data sources</div>
+            <div className="about-credits__links">
               <a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://www.marketaux.com"); }}>Marketaux</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://finnhub.io"); }}>Finnhub</a>
               <a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://financialmodelingprep.com"); }}>FMP</a>
               <a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://www.forexfactory.com"); }}>ForexFactory</a>
             </div>
+          </div>
+
+          <div className="about-footer">
+            © 2026 Younes Ahmadi · Made with care · All rights reserved
           </div>
         </div>
       )}
