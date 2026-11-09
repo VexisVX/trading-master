@@ -559,7 +559,13 @@ export function Settings() {
             <p className="settings__hint" style={{ marginTop: 12 }}>
               A professional trading journal, risk calculator and analytics tool. All data is stored locally.
             </p>
+            <p className="settings__hint" style={{ marginTop: 4 }}>
+              Built by <strong>Younes Ahmadi</strong>
+            </p>
             <div className="about-links">
+              <a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://github.com/VexisVX"); }}>
+                GitHub · VexisVX
+              </a>
               <a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://www.marketaux.com"); }}>Marketaux</a>
               <a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://financialmodelingprep.com"); }}>FMP</a>
               <a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://www.forexfactory.com"); }}>ForexFactory</a>

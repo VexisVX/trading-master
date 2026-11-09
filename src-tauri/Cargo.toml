@@ -1,8 +1,9 @@
 [package]
+default-run = "trading-manager"
 name = "trading-manager"
 version = "0.1.0"
 description = "Professional Trading Management Desktop App"
-authors = ["you"]
+authors = ["Younes Ahmadi <https://github.com/VexisVX>"]
 edition = "2021"
 
 [lib]

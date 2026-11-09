@@ -53,6 +53,11 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "Younes Ahmadi",
+    "copyright": "© 2026 Younes Ahmadi",
+    "category": "Finance",
+    "shortDescription": "Professional trading journal & analytics",
+    "longDescription": "A local-first trading journal, risk calculator and analytics tool."
   }
 }
