@@ -1,15 +1,13 @@
-name: Build Tauri EXE
+name: Build Tauri DEBUG
 
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build-windows:
+  build-debug:
     runs-on: windows-latest
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v5
@@ -27,23 +25,19 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Tauri App
+      - name: Build Tauri App (DEBUG)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: app-v__VERSION__
-          releaseName: 'App v__VERSION__'
-          releaseBody: 'Download the .exe installer below.'
-          releaseDraft: false
-          prerelease: false
-          args: ''
+          args: '--debug'
 
-      - name: Upload EXE as Artifact
+      - name: Upload DEBUG artifact
         uses: actions/upload-artifact@v5
         with:
-          name: windows-exe
+          name: windows-debug
           path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/debug/bundle/nsis/*.exe
+            src-tauri/target/debug/bundle/msi/*.msi
+            src-tauri/target/debug/*.exe
           if-no-files-found: warn
