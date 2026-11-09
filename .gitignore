@@ -20,3 +20,5 @@ src-tauri/Cargo.lock
 # Env
 .env
 .env.local
+.github/workflows/build-tauri.yml
+.github/workflows/build-tauri.yml
